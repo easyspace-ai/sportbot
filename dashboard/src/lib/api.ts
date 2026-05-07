@@ -137,11 +137,8 @@ export interface PolymarketAccountListItem {
 
 export interface PolymarketAccountCreateBody {
   name: string;
-  apiKey: string;
-  secret: string;
-  passphrase: string;
+  /** Owner EOA private key; server derives CLOB API key + CREATE2 funder (POLY_1271). */
   privateKey: string;
-  funderAddress: string;
 }
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';

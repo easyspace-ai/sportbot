@@ -3,6 +3,7 @@ import { config } from '../config';
 import { prisma } from '../db';
 import { createLogger } from '../logger';
 import { getPlatformHttpsProxyAgent } from '../proxySupport';
+import { fetchPolymarketCollateralBalance } from '../services/polymarketTrading';
 
 const log = createLogger('balance');
 
@@ -50,17 +51,39 @@ async function readPolyPusd(funder: string): Promise<number> {
   return readErc20Balance(config.POLYGON_RPC_URL, POLYMARKET_PUSD, funder);
 }
 
+async function readPolymarketAccountUsd(a: {
+  id: string;
+  apiKey: string;
+  secret: string;
+  passphrase: string;
+  privateKey: string;
+  funderAddress: string;
+}): Promise<number | null> {
+  try {
+    return await fetchPolymarketCollateralBalance({
+      apiKey: a.apiKey,
+      secret: a.secret,
+      passphrase: a.passphrase,
+      privateKey: a.privateKey,
+      funderAddress: a.funderAddress,
+    });
+  } catch (err) {
+    log.warn({ err, accountId: a.id }, 'polymarket CLOB collateral balance failed, trying on-chain pUSD');
+    try {
+      return await readPolyPusd(a.funderAddress);
+    } catch (err2) {
+      log.error({ err: err2, accountId: a.id }, 'polymarket account balance failed');
+      return null;
+    }
+  }
+}
+
 export async function fetchBalances(): Promise<BalanceSummary> {
   const accounts = await prisma.polymarketAccount.findMany({ orderBy: { createdAt: 'asc' } });
 
   const polymarketAccounts: PolymarketAccountBalanceRow[] = await Promise.all(
     accounts.map(async (a) => {
-      let polymarket: number | null = null;
-      try {
-        polymarket = await readPolyPusd(a.funderAddress);
-      } catch (err) {
-        log.error({ err, accountId: a.id }, 'polymarket account balance RPC failed');
-      }
+      const polymarket = await readPolymarketAccountUsd(a);
       return {
         id: a.id,
         name: a.name,

@@ -21,11 +21,7 @@ export function Accounts() {
   const [balances, setBalances] = useState<PolymarketAccountBalanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [secret, setSecret] = useState('');
-  const [passphrase, setPassphrase] = useState('');
   const [privateKey, setPrivateKey] = useState('');
-  const [funderAddress, setFunderAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -61,19 +57,11 @@ export function Accounts() {
     try {
       await createPolymarketAccount({
         name: name.trim(),
-        apiKey,
-        secret,
-        passphrase,
-        privateKey,
-        funderAddress: funderAddress.trim(),
+        privateKey: privateKey.trim(),
       });
       toast({ title: '已添加', description: '首个账号会自动设为当前下单账号', variant: 'success' });
       setName('');
-      setApiKey('');
-      setSecret('');
-      setPassphrase('');
       setPrivateKey('');
-      setFunderAddress('');
       await load();
     } catch (err) {
       toast({
@@ -122,7 +110,7 @@ export function Accounts() {
           Polymarket 账号
         </span>
         <span className="font-mono text-[10px] text-tm-tx-mut">
-          当前激活账号用于 CLOB 下单；余额为链上 pUSD（Polygon）。
+          CLOB V2（POLY_1271）：只需私钥，服务端会推导 API Key 与 funder（CREATE2 deposit，与 polymarket-clob-v2-go-exmaple 一致）。余额来自 CLOB。
         </span>
       </div>
 
@@ -200,46 +188,10 @@ export function Accounts() {
               />
             </div>
             <div>
-              <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">Funder（Polymarket 代理钱包地址）</label>
-              <input
-                value={funderAddress}
-                onChange={(e) => setFunderAddress(e.target.value)}
-                className="w-full bg-tm-bg border border-tm-bd rounded-sm px-2 py-1.5 font-mono text-[11px] text-tm-tx"
-                placeholder="0x…"
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">API Key</label>
-                <input
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full bg-tm-bg border border-tm-bd rounded-sm px-2 py-1.5 font-mono text-[11px] text-tm-tx"
-                />
-              </div>
-              <div>
-                <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">Secret</label>
-                <input
-                  value={secret}
-                  onChange={(e) => setSecret(e.target.value)}
-                  className="w-full bg-tm-bg border border-tm-bd rounded-sm px-2 py-1.5 font-mono text-[11px] text-tm-tx"
-                  type="password"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">Passphrase</label>
-              <input
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                className="w-full bg-tm-bg border border-tm-bd rounded-sm px-2 py-1.5 font-mono text-[11px] text-tm-tx"
-                type="password"
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">Private key（签名用，仅保存在本机 SQLite）</label>
+              <label className="font-mono text-[9px] text-tm-tx-mut block mb-1">Owner 私钥（Polygon EOA）</label>
+              <p className="font-mono text-[9px] text-tm-tx-dim mb-1.5 leading-relaxed">
+                仅保存在本机 SQLite。服务端调用 CLOB L1 推导 API Key，并用 CREATE2 推导 funder（与 polymarket-clob-v2-go-exmaple 一致）。
+              </p>
               <input
                 value={privateKey}
                 onChange={(e) => setPrivateKey(e.target.value)}

@@ -107,7 +107,10 @@ model BotConfig {
   value String
 }
 
-/** Stored Polymarket CLOB credentials; exactly one row may have `isActive` for trading. */
+/**
+ * Stored Polymarket CLOB credentials; exactly one row may have `isActive` for trading.
+ * CLOB V2 POLY_1271: `funderAddress` is the CREATE2 deposit wallet for the EOA (usually auto-filled when adding via private key only).
+ */
 model PolymarketAccount {
   id             String   @id @default(cuid())
   name           String

@@ -17,6 +17,12 @@ vi.mock('../db', () => ({
   },
 }));
 
+const fetchPolymarketCollateralBalanceMock = vi.fn();
+vi.mock('../services/polymarketTrading', () => ({
+  fetchPolymarketCollateralBalance: (...args: unknown[]) =>
+    fetchPolymarketCollateralBalanceMock(...args),
+}));
+
 const balanceOfMock = vi.fn();
 const contractMock = vi.fn().mockImplementation(() => ({ balanceOf: balanceOfMock }));
 
@@ -32,6 +38,7 @@ vi.mock('ethers', async () => {
 beforeEach(() => {
   balanceOfMock.mockReset();
   contractMock.mockClear();
+  fetchPolymarketCollateralBalanceMock.mockReset();
 });
 
 const POLYMARKET_PUSD = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
@@ -53,7 +60,7 @@ describe('fetchBalances', () => {
     expect(tokens).toContain(POLYMARKET_PUSD);
   });
 
-  it('returns polymarketAccounts rows with per-funder balances', async () => {
+  it('returns polymarketAccounts rows with CLOB collateral balances', async () => {
     const { prisma } = await import('../db');
     vi.mocked(prisma.polymarketAccount.findMany).mockResolvedValueOnce([
       {
@@ -70,14 +77,41 @@ describe('fetchBalances', () => {
       },
     ] as never);
 
-    balanceOfMock.mockResolvedValueOnce(1_000_000n);
+    fetchPolymarketCollateralBalanceMock.mockResolvedValueOnce(42.5);
 
     const { fetchBalances } = await import('./balance');
     const result = await fetchBalances();
 
+    expect(fetchPolymarketCollateralBalanceMock).toHaveBeenCalledTimes(1);
     expect(result.polymarketAccounts).toHaveLength(1);
-    expect(result.polymarketAccounts[0].polymarket).toBe(1);
-    expect(result.polymarket).toBe(1);
+    expect(result.polymarketAccounts[0].polymarket).toBe(42.5);
+    expect(result.polymarket).toBe(42.5);
+  });
+
+  it('falls back to on-chain pUSD when CLOB collateral fails', async () => {
+    const { prisma } = await import('../db');
+    vi.mocked(prisma.polymarketAccount.findMany).mockResolvedValueOnce([
+      {
+        id: 'a1',
+        name: 'One',
+        apiKey: 'k',
+        secret: 's',
+        passphrase: 'p',
+        privateKey: '0x1',
+        funderAddress: '0x2222222222222222222222222222222222222222',
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    fetchPolymarketCollateralBalanceMock.mockRejectedValueOnce(new Error('clob down'));
+    balanceOfMock.mockResolvedValueOnce(3_000_000n);
+
+    const { fetchBalances } = await import('./balance');
+    const result = await fetchBalances();
+
+    expect(result.polymarketAccounts[0].polymarket).toBe(3);
   });
 
   it('returns null polymarket when RPC rejects', async () => {

@@ -64,18 +64,12 @@ export async function executePolymarketSell(
     if (err?.message?.includes('maker address not allowed')) {
       throw new Error(
         'Polymarket 订单被拒：maker 地址不被允许。' +
-          '请检查 Polymarket 账号配置中的「Funder（Polymarket 代理钱包地址）」字段。' +
-          '该字段必须填写 Gnosis Safe deposit wallet 地址（在 Polymarket 网站的 Wallet 页面可查看），' +
-          '而不是签名 EOA 地址。如果还没有 deposit wallet，请先通过 Polymarket 网站完成 deposit wallet 创建流程。',
+          '本 bot 固定 POLY_1271：funder 须为 CREATE2 推导的 deposit 钱包（与私钥对应 EOA 唯一确定）。' +
+          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 .env 四项是否与该 EOA 匹配。',
       );
     }
     throw err;
   }
-
-  return {
-    orderId: result.orderID ?? `order_${Date.now()}`,
-    soldShares: sellAmount,
-  };
 }
 
 /**
@@ -126,9 +120,8 @@ export async function executePolymarketOrder(
     if (err?.message?.includes('maker address not allowed')) {
       throw new Error(
         'Polymarket 订单被拒：maker 地址不被允许。' +
-          '请检查 Polymarket 账号配置中的「Funder（Polymarket 代理钱包地址）」字段。' +
-          '该字段必须填写 Gnosis Safe deposit wallet 地址（在 Polymarket 网站的 Wallet 页面可查看），' +
-          '而不是签名 EOA 地址。如果还没有 deposit wallet，请先通过 Polymarket 网站完成 deposit wallet 创建流程。',
+          '本 bot 固定 POLY_1271：funder 须为 CREATE2 推导的 deposit 钱包（与私钥对应 EOA 唯一确定）。' +
+          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 .env 四项是否与该 EOA 匹配。',
       );
     }
     throw err;
