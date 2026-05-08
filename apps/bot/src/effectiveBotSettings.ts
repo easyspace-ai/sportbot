@@ -42,3 +42,39 @@ export function getTelegramAuthorizedChatId(): string | undefined {
   if (fromDb) return fromDb;
   return config.TELEGRAM_AUTHORIZED_CHAT_ID;
 }
+
+const DEFAULT_POLY_FOK_EXTRA_TICKS = 5;
+const MAX_POLY_FOK_EXTRA_TICKS = 50;
+
+function parsePolyFokExtraTicks(key: string): number {
+  const raw = getBotConfigCached(key)?.trim();
+  if (!raw) return DEFAULT_POLY_FOK_EXTRA_TICKS;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_POLY_FOK_EXTRA_TICKS;
+  return Math.min(MAX_POLY_FOK_EXTRA_TICKS, n);
+}
+
+/** Extra tick steps above best ask for Polymarket FOK BUY limit (wider = easier fill). */
+export function getPolymarketFokBuyExtraTicks(): number {
+  return parsePolyFokExtraTicks('polymarketFokBuyExtraTicks');
+}
+
+/** Extra tick steps below best bid for Polymarket FOK SELL floor (wider = easier fill). */
+export function getPolymarketFokSellExtraTicks(): number {
+  return parsePolyFokExtraTicks('polymarketFokSellExtraTicks');
+}
+
+const DEFAULT_MIN_OPEN_RISK_SHARES = 1;
+const MAX_MIN_OPEN_RISK_SHARES = 1_000_000;
+
+/**
+ * Minimum outcome shares for a position to appear in 风控 and to stay `open` vs CLOB balance.
+ * BotConfig `minOpenRiskShares` (default 1). Invalid / empty falls back to 1.
+ */
+export function getMinOpenRiskShares(): number {
+  const raw = getBotConfigCached('minOpenRiskShares')?.trim();
+  if (!raw) return DEFAULT_MIN_OPEN_RISK_SHARES;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_MIN_OPEN_RISK_SHARES;
+  return Math.min(MAX_MIN_OPEN_RISK_SHARES, n);
+}

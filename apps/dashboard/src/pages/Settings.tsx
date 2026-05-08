@@ -5,6 +5,10 @@ import { cn } from '../lib/utils';
 import { useOddsFormat } from '../hooks/useOddsFormat';
 import { type OddsFormat } from '../lib/oddsFormat';
 import { Trash2 } from 'lucide-react';
+import {
+  DEFAULT_EVENT_CLASSIFICATION_TAGS,
+  parseEventClassificationTags,
+} from '../lib/eventClassification';
 
 const ODDS_FORMAT_OPTIONS: { value: OddsFormat; label: string }[] = [
   { value: 'decimal', label: '欧赔' },
@@ -21,8 +25,6 @@ const RESERVED_CONFIG_KEYS = new Set([
 ]);
 
 const SUGGESTED_LEAGUE_TAGS = ['NBA', 'NCAAB', 'NHL', 'EPL', 'MLS', 'UCL', 'MLB'];
-
-const DEFAULT_EVENT_TAGS = ['nba', 'nhl'];
 
 export interface PriceStopLossRangeRow {
   id: string;
@@ -93,23 +95,16 @@ const KEY_DESCRIPTIONS: Record<string, string> = {
     '市场同步循环从 SX Bet 与 Polymarket 拉取报价的间隔（毫秒）。更短 = 盘口更新更及时，但 API 压力更大。',
   orderBookLevels:
     '投注单 / 交易面板中，每侧实时推送的 SX Bet 盘口档位数。越大可见深度越多，经 WebSocket 传输的数据也越多。范围 3–25。',
+  polymarketFokBuyExtraTicks:
+    'Polymarket FOK 买入：在最优卖价（best ask）之上额外允许的 tick 档数，用于放宽限价，减少「无法完全成交」被拒。路由仍会先按 slippageTolerance 约束计划价；此处在盘口侧再抬高上限。整数 0–50，默认 5。',
+  polymarketFokSellExtraTicks:
+    'Polymarket FOK 卖出（含风控平仓）：在最优买价（best bid）之下额外放宽的 tick 档数（与原先固定 10 tick 思路相同，可配置）。整数 0–50，默认 5。',
+  minOpenRiskShares:
+    '风控列表与 CLOB 余额对账：仅保留份额 ≥ 本值的持仓（默认 1）。低于该值的链上余额会对应关闭本地仓位；可略大于 1 用于过滤极小仓位。必须为正数，≤ 1000000。',
 };
 
 function rowValue(rows: ConfigRow[], key: string): string {
   return rows.find((r) => r.key === key)?.value ?? '';
-}
-
-function parseTagsJson(raw: string): string[] {
-  if (!raw.trim()) return [...DEFAULT_EVENT_TAGS];
-  try {
-    const p = JSON.parse(raw) as unknown;
-    if (!Array.isArray(p)) return [...DEFAULT_EVENT_TAGS];
-    return p
-      .map((x) => String(x).trim().toLowerCase())
-      .filter(Boolean);
-  } catch {
-    return [...DEFAULT_EVENT_TAGS];
-  }
 }
 
 function parsePriceRowsJson(raw: string): PriceStopLossRangeRow[] {
@@ -144,7 +139,7 @@ export function Settings() {
   const [proxyDraft, setProxyDraft] = useState('');
   const [tgTokenDraft, setTgTokenDraft] = useState('');
   const [tgChatDraft, setTgChatDraft] = useState('');
-  const [tags, setTags] = useState<string[]>([...DEFAULT_EVENT_TAGS]);
+  const [tags, setTags] = useState<string[]>([...DEFAULT_EVENT_CLASSIFICATION_TAGS]);
   const [tagInput, setTagInput] = useState('');
   const [priceRows, setPriceRows] = useState<PriceStopLossRangeRow[]>(() =>
     DEFAULT_PRICE_ROWS.map((r) => ({ ...r })),
@@ -160,7 +155,7 @@ export function Settings() {
         setProxyDraft(data.find((r) => r.key === 'httpPlatformProxyUrl')?.value ?? '');
         setTgTokenDraft(data.find((r) => r.key === 'telegramBotToken')?.value ?? '');
         setTgChatDraft(data.find((r) => r.key === 'telegramAuthorizedChatId')?.value ?? '');
-        setTags(parseTagsJson(rowValue(data, 'eventClassificationTags')));
+        setTags(parseEventClassificationTags(rowValue(data, 'eventClassificationTags')));
         setPriceRows(parsePriceRowsJson(rowValue(data, 'priceStopLossRanges')));
         setEdited({});
       })

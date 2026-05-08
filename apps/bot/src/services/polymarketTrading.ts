@@ -108,7 +108,18 @@ export async function fetchPolymarketCollateralBalance(
     source: 'database',
   });
   const res = await client.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
-  const n = parseFloat(String(res.balance));
+  const raw = String(res.balance).trim();
+  // CLOB returns collateral in 1e-6 USDC units (integer string). Using it as dollars
+  // shows e.g. 5705489 as $5,705,489 instead of ~$5.71.
+  if (!raw.includes('.') && !/[eE]/.test(raw)) {
+    try {
+      const micro = BigInt(raw);
+      return Number(micro) / 1e6;
+    } catch {
+      // fall through to float parse
+    }
+  }
+  const n = Number(raw);
   if (!Number.isFinite(n)) {
     throw new Error('invalid_clob_collateral_balance');
   }

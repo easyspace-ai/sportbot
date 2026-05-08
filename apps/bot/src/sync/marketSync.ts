@@ -13,6 +13,44 @@ const log = createLogger('sync');
 
 export const SYNCED_LEAGUES: LeagueConfig[] = [EPL, UCL, UEL, COPA_LIBERTADORES, LA_LIGA, SERIE_A, BUNDESLIGA, EREDIVISIE, LIGUE_1, NBA, MLB, NHL];
 
+function syncErrorFingerprint(err: unknown): { key: string; code?: string; message: string } {
+  if (err && typeof err === 'object') {
+    const o = err as { code?: string; message?: string; cause?: unknown };
+    const code = typeof o.code === 'string' ? o.code : undefined;
+    const message = typeof o.message === 'string' ? o.message : String(err);
+    const key = `${code ?? ''}\t${message}`;
+    return { key, code, message };
+  }
+  const message = String(err);
+  return { key: message, message };
+}
+
+/** One log line per distinct failure (avoids N identical ERROR lines when the network is down). */
+function logAggregatedFetchFailures(
+  platform: 'polymarket' | 'sx',
+  failures: { league: string; err: unknown }[],
+): void {
+  if (failures.length === 0) return;
+  const groups = new Map<string, { code?: string; message: string; leagues: string[] }>();
+  for (const { league, err } of failures) {
+    const { key, code, message } = syncErrorFingerprint(err);
+    const g = groups.get(key);
+    if (g) g.leagues.push(league);
+    else groups.set(key, { code, message, leagues: [league] });
+  }
+  for (const { code, message, leagues } of groups.values()) {
+    log.error(
+      {
+        platform,
+        err: { code, message },
+        failedLeagueCount: leagues.length,
+        leagues: leagues.slice(0, 12),
+      },
+      'fetch failed',
+    );
+  }
+}
+
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 
 async function getPollingInterval(): Promise<number> {
@@ -81,6 +119,21 @@ async function seedDefaultConfig(): Promise<void> {
       create: { key: 'priceStopLossRanges', value: DEFAULT_PRICE_STOP_LOSS_RANGES },
       update: {},
     }),
+    prisma.botConfig.upsert({
+      where: { key: 'polymarketFokBuyExtraTicks' },
+      create: { key: 'polymarketFokBuyExtraTicks', value: '5' },
+      update: {},
+    }),
+    prisma.botConfig.upsert({
+      where: { key: 'polymarketFokSellExtraTicks' },
+      create: { key: 'polymarketFokSellExtraTicks', value: '5' },
+      update: {},
+    }),
+    prisma.botConfig.upsert({
+      where: { key: 'minOpenRiskShares' },
+      create: { key: 'minOpenRiskShares', value: '1' },
+      update: {},
+    }),
   ]);
   await refreshBotConfigCache();
 }
@@ -133,16 +186,18 @@ async function runSync(): Promise<void> {
 
   // Fetch all leagues from both platforms in parallel, tagging each quote with its league name.
   // Adapters already stamp league.name on each quote — just collect and flatten.
+  const sxFailures: { league: string; err: unknown }[] = [];
   const sxFetches = SYNCED_LEAGUES.map((league) =>
     fetchSxBetMarkets(league).catch((err): MarketQuote[] => {
-      log.error({ err, platform: 'sx', league: league.name }, 'fetch failed');
+      sxFailures.push({ league: league.name, err });
       return [];
     }),
   );
+  const polyFailures: { league: string; err: unknown }[] = [];
   const polyFetches = SYNCED_LEAGUES.map((league) => {
     if (!league.polymarket) return Promise.resolve([] as MarketQuote[]);
     return fetchPolymarketMarkets(league).catch((err): MarketQuote[] => {
-      log.error({ err, platform: 'polymarket', league: league.name }, 'fetch failed');
+      polyFailures.push({ league: league.name, err });
       return [];
     });
   });
@@ -151,6 +206,9 @@ async function runSync(): Promise<void> {
     Promise.all(sxFetches),
     Promise.all(polyFetches),
   ]);
+
+  logAggregatedFetchFailures('sx', sxFailures);
+  logAggregatedFetchFailures('polymarket', polyFailures);
 
   const sxQuotes = sxResults.flat();
   const polyQuotes = polyResults.flat();

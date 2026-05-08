@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { type Market, type MarketOutcome } from '../lib/api';
+import { type Market, type MarketOutcome, getConfig } from '../lib/api';
+import {
+  DEFAULT_EVENT_CLASSIFICATION_TAGS,
+  leagueMatchesEventTag,
+  parseEventClassificationTags,
+} from '../lib/eventClassification';
 import { BetSlip } from '../components/BetSlip';
 import { MatchDetail } from './MatchDetail';
 import {
@@ -24,7 +29,7 @@ import { useLiveFixtureState } from '../hooks/useLiveFixtureState';
 import { useMarketList } from '../hooks/useMarketList';
 import { LiveMatchHeader } from '../components/LiveMatchHeader';
 import { type FixtureState } from '../lib/wsBus';
-import { LeagueTree } from '../components/LeagueTree';
+import { LeagueTree, type LeagueNavTag } from '../components/LeagueTree';
 import { BottomSheet } from '../components/BottomSheet';
 import { VenueLogo } from '../components/VenueLogo';
 import { OddsLegend } from '../components/OddsLegend';
@@ -126,16 +131,6 @@ function OddsCell({
 
 // ─── Line-label helpers ───────────────────────────────────────────────────────
 
-function extractSpreadLine(label: string, _teamName: string): string {
-  const m = label.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)$/);
-  return m ? m[1] : label;
-}
-
-function extractTotalLine(label: string): string {
-  const m = label.match(/^(?:Over|Under) (\d+(?:\.\d+)?)/);
-  return m ? m[1] : '';
-}
-
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString('zh-CN', { hour: 'numeric', minute: '2-digit' });
@@ -151,24 +146,16 @@ interface MatchRowProps {
   onOddsClick: (outcomeId: string, label: string, matchName: string) => void;
 }
 
-const SOCCER_GRID_COLS = '1fr 70px 70px 70px 12px 76px 76px 12px 76px 76px 36px';
+const SOCCER_GRID_COLS = '1fr 70px 70px 70px 36px';
 const SOCCER_GRID_GAP = '6px';
-
-function GroupDivider() {
-  return <span className="block w-px h-8 bg-tm-bd mx-auto" />;
-}
 
 function SoccerMatchRow({ group, selection, liveState, onRowClick, onOddsClick }: MatchRowProps) {
   const { home, draw, away } = get1X2(group);
-  const { spreadHome, spreadAway, totalOver, totalUnder } = getSpreadMLTotal(group);
-  const [team1, team2] = group.name.split(' vs ').map((s) => s.trim());
+  const { spreadHome, spreadAway, totalOver, totalUnder, mlHome, mlAway } = getSpreadMLTotal(group);
 
-  const ahHomeLine = spreadHome ? extractSpreadLine(spreadHome.label, team1) : '';
-  const ahAwayLine = spreadAway ? extractSpreadLine(spreadAway.label, team2) : '';
-  const ouOverLine = totalOver ? extractTotalLine(totalOver.label) : '';
-  const ouUnderLine = totalUnder ? extractTotalLine(totalUnder.label) : '';
-
-  const consumed = [home, draw, away, spreadHome, spreadAway, totalOver, totalUnder].filter(Boolean).length;
+  const consumed = [home, draw, away, spreadHome, spreadAway, mlHome, mlAway, totalOver, totalUnder].filter(
+    Boolean,
+  ).length;
   const extraCount = group.outcomes.length - consumed;
 
   return (
@@ -178,8 +165,8 @@ function SoccerMatchRow({ group, selection, liveState, onRowClick, onOddsClick }
       onClick={() => onRowClick(group)}
     >
       <div className="min-w-0">
-        <p className="text-[13px] font-semibold text-tm-tx truncate leading-tight">{team1 ?? group.name}</p>
-        <p className="text-[13px] text-tm-tx-dim truncate leading-tight">{team2 ?? ''}</p>
+        <p className="text-[13px] font-semibold text-tm-tx truncate leading-tight">{group.name.split(' vs ')[0]?.trim() ?? group.name}</p>
+        <p className="text-[13px] text-tm-tx-dim truncate leading-tight">{group.name.split(' vs ')[1]?.trim() ?? ''}</p>
         {isLive(liveState) ? (
           <LiveMatchHeader state={liveState} />
         ) : (
@@ -191,12 +178,6 @@ function SoccerMatchRow({ group, selection, liveState, onRowClick, onOddsClick }
       <OddsCell outcome={home} lineLabel="1" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
       <OddsCell outcome={draw} lineLabel="X" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
       <OddsCell outcome={away} lineLabel="2" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <GroupDivider />
-      <OddsCell outcome={spreadHome} lineLabel={ahHomeLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <OddsCell outcome={spreadAway} lineLabel={ahAwayLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <GroupDivider />
-      <OddsCell outcome={totalOver} lineLabel={ouOverLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <OddsCell outcome={totalUnder} lineLabel={ouUnderLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
       <div className="text-right">
         {extraCount > 0 && (
           <span className="font-mono text-[10px] text-tm-tx-mut">+{extraCount}</span>
@@ -206,17 +187,12 @@ function SoccerMatchRow({ group, selection, liveState, onRowClick, onOddsClick }
   );
 }
 
-const NA_GRID_COLS = '1fr 76px 76px 12px 76px 76px 12px 76px 76px 36px';
+const NA_GRID_COLS = '1fr 76px 76px 36px';
 const NA_GRID_GAP = '6px';
 
 function NAMatchRow({ group, selection, liveState, onRowClick, onOddsClick }: MatchRowProps) {
   const [team1, team2] = group.name.split(' vs ').map((s) => s.trim());
   const { mlHome, mlAway, spreadHome, spreadAway, totalOver, totalUnder } = getSpreadMLTotal(group);
-
-  const spreadHomeLine = spreadHome ? extractSpreadLine(spreadHome.label, team1) : '';
-  const spreadAwayLine = spreadAway ? extractSpreadLine(spreadAway.label, team2) : '';
-  const overLine = totalOver ? extractTotalLine(totalOver.label) : '';
-  const underLine = totalUnder ? extractTotalLine(totalUnder.label) : '';
 
   const consumed = [spreadHome, spreadAway, mlHome, mlAway, totalOver, totalUnder].filter(Boolean).length;
   const extraCount = group.outcomes.length - consumed;
@@ -238,14 +214,8 @@ function NAMatchRow({ group, selection, liveState, onRowClick, onOddsClick }: Ma
           </p>
         )}
       </div>
-      <OddsCell outcome={spreadHome} lineLabel={spreadHomeLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <OddsCell outcome={spreadAway} lineLabel={spreadAwayLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <GroupDivider />
       <OddsCell outcome={mlHome} lineLabel="1" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
       <OddsCell outcome={mlAway} lineLabel="2" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <GroupDivider />
-      <OddsCell outcome={totalOver} lineLabel={overLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-      <OddsCell outcome={totalUnder} lineLabel={underLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
       <div className="text-right">
         {extraCount > 0 && (
           <span className="font-mono text-[10px] text-tm-tx-mut">+{extraCount}</span>
@@ -289,15 +259,11 @@ function CardMatchHeader({
 
 function SoccerMatchCard({ group, selection, liveState, onRowClick, onOddsClick }: MatchRowProps) {
   const { home, draw, away } = get1X2(group);
-  const { spreadHome, spreadAway, totalOver, totalUnder } = getSpreadMLTotal(group);
-  const [team1, team2] = group.name.split(' vs ').map((s) => s.trim());
+  const { spreadHome, spreadAway, totalOver, totalUnder, mlHome, mlAway } = getSpreadMLTotal(group);
 
-  const ahHomeLine = spreadHome ? extractSpreadLine(spreadHome.label, team1) : '';
-  const ahAwayLine = spreadAway ? extractSpreadLine(spreadAway.label, team2) : '';
-  const ouOverLine = totalOver ? extractTotalLine(totalOver.label) : '';
-  const ouUnderLine = totalUnder ? extractTotalLine(totalUnder.label) : '';
-
-  const consumed = [home, draw, away, spreadHome, spreadAway, totalOver, totalUnder].filter(Boolean).length;
+  const consumed = [home, draw, away, spreadHome, spreadAway, mlHome, mlAway, totalOver, totalUnder].filter(
+    Boolean,
+  ).length;
   const extraCount = group.outcomes.length - consumed;
 
   return (
@@ -306,33 +272,16 @@ function SoccerMatchCard({ group, selection, liveState, onRowClick, onOddsClick 
       onClick={() => onRowClick(group)}
     >
       <div className="grid grid-cols-[2fr_3fr] gap-2.5 items-start">
-        {/* Left: team panel */}
         <CardMatchHeader group={group} liveState={liveState} extraCount={extraCount} />
 
-        {/* Right: header strip + 3-column chip grid */}
         <div className="flex flex-col gap-1 min-w-0">
-          <div className="grid grid-cols-3 gap-1">
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">1 / X / 2</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">让球</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">大 / 小</span>
-          </div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">
+            独赢 · 1 / X / 2
+          </span>
           <div className="grid grid-cols-3 gap-1 items-start">
-            {/* Column 1: 1 / X / 2 (home, draw, away) */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={home} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="1" />
-              <OddsCell compact outcome={draw} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="X" />
-              <OddsCell compact outcome={away} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="2" />
-            </div>
-            {/* Column 2: Asian Handicap (home, away) */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={spreadHome} lineValue={ahHomeLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-              <OddsCell compact outcome={spreadAway} lineValue={ahAwayLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-            </div>
-            {/* Column 3: Over / Under */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={totalOver} lineValue={ouOverLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-              <OddsCell compact outcome={totalUnder} lineValue={ouUnderLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-            </div>
+            <OddsCell compact outcome={home} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="1" />
+            <OddsCell compact outcome={draw} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="X" />
+            <OddsCell compact outcome={away} matchName={group.name} selection={selection} onOddsClick={onOddsClick} lineLabel="2" />
           </div>
         </div>
       </div>
@@ -341,13 +290,7 @@ function SoccerMatchCard({ group, selection, liveState, onRowClick, onOddsClick 
 }
 
 function NAMatchCard({ group, selection, liveState, onRowClick, onOddsClick }: MatchRowProps) {
-  const [team1, team2] = group.name.split(' vs ').map((s) => s.trim());
   const { mlHome, mlAway, spreadHome, spreadAway, totalOver, totalUnder } = getSpreadMLTotal(group);
-
-  const spreadHomeLine = spreadHome ? extractSpreadLine(spreadHome.label, team1) : '';
-  const spreadAwayLine = spreadAway ? extractSpreadLine(spreadAway.label, team2) : '';
-  const overLine = totalOver ? extractTotalLine(totalOver.label) : '';
-  const underLine = totalUnder ? extractTotalLine(totalUnder.label) : '';
 
   const consumed = [spreadHome, spreadAway, mlHome, mlAway, totalOver, totalUnder].filter(Boolean).length;
   const extraCount = group.outcomes.length - consumed;
@@ -358,32 +301,15 @@ function NAMatchCard({ group, selection, liveState, onRowClick, onOddsClick }: M
       onClick={() => onRowClick(group)}
     >
       <div className="grid grid-cols-[2fr_3fr] gap-2.5 items-start">
-        {/* Left: team panel */}
         <CardMatchHeader group={group} liveState={liveState} extraCount={extraCount} />
 
-        {/* Right: header strip + 3-column chip grid */}
         <div className="flex flex-col gap-1 min-w-0">
-          <div className="grid grid-cols-3 gap-1">
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">让分</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">独赢</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">大 / 小</span>
-          </div>
-          <div className="grid grid-cols-3 gap-1 items-start">
-            {/* Column 1: Handicap (home, away) */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={spreadHome} lineValue={spreadHomeLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-              <OddsCell compact outcome={spreadAway} lineValue={spreadAwayLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-            </div>
-            {/* Column 2: Money line (home, away) — no line value, falls back to venue label */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={mlHome} lineLabel="1" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-              <OddsCell compact outcome={mlAway} lineLabel="2" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-            </div>
-            {/* Column 3: Over / Under */}
-            <div className="flex flex-col gap-1">
-              <OddsCell compact outcome={totalOver} lineValue={overLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-              <OddsCell compact outcome={totalUnder} lineValue={underLine} matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
-            </div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-tm-tx-mut text-center truncate">
+            独赢
+          </span>
+          <div className="grid grid-cols-2 gap-1 items-start">
+            <OddsCell compact outcome={mlHome} lineLabel="1" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
+            <OddsCell compact outcome={mlAway} lineLabel="2" matchName={group.name} selection={selection} onOddsClick={onOddsClick} />
           </div>
         </div>
       </div>
@@ -404,11 +330,6 @@ function SoccerColHead() {
       <span className="text-center">X</span>
       <span className="text-center">2</span>
       <span />
-      <span className="text-center" style={{ gridColumn: 'span 2' }}>让球</span>
-      <span />
-      <span className="text-center">大</span>
-      <span className="text-center">小</span>
-      <span />
     </div>
   );
 }
@@ -420,12 +341,7 @@ function NAColHead() {
       style={{ gridTemplateColumns: NA_GRID_COLS, columnGap: NA_GRID_GAP }}
     >
       <span />
-      <span className="text-center" style={{ gridColumn: 'span 2' }}>让分</span>
-      <span />
       <span className="text-center" style={{ gridColumn: 'span 2' }}>独赢</span>
-      <span />
-      <span className="text-center">大</span>
-      <span className="text-center">小</span>
       <span />
     </div>
   );
@@ -434,30 +350,25 @@ function NAColHead() {
 // ─── Mobile league dropdown ───────────────────────────────────────────────────
 
 interface LeagueDropdownProps {
-  sports: string[];
-  leaguesBySport: Map<string, Map<string, number>>;
-  selectedSport: string;
-  selectedLeague: string;
+  tags: LeagueNavTag[];
+  selectedTag: string;
   inPlayMode: boolean;
   livePlayCount: number;
   onSelectInPlay: () => void;
-  onSelectLeague: (sport: string, league: string) => void;
+  onSelectTag: (tag: string) => void;
 }
 
 function LeagueDropdown({
-  sports,
-  leaguesBySport,
-  selectedSport,
-  selectedLeague,
+  tags,
+  selectedTag,
   inPlayMode,
   livePlayCount,
   onSelectInPlay,
-  onSelectLeague,
+  onSelectTag,
 }: LeagueDropdownProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     function onPointer(e: PointerEvent) {
@@ -476,11 +387,11 @@ function LeagueDropdown({
     };
   }, [open]);
 
+  const selectedLabel = tags.find((t) => t.tag === selectedTag)?.label ?? selectedTag.toUpperCase();
+
   const triggerLabel = inPlayMode
     ? `进行中（${livePlayCount}）`
-    : `${selectedLeague} · ${selectedSport}`;
-
-  const sortedSports = useMemo(() => sports.slice().sort(), [sports]);
+    : `${selectedLabel}`;
 
   return (
     <div ref={rootRef} className="relative">
@@ -506,7 +417,6 @@ function LeagueDropdown({
           aria-label="选择联赛"
           className="absolute left-0 right-0 z-30 mt-1 max-h-[60vh] overflow-y-auto rounded-[var(--tm-rad)] border border-tm-bd bg-tm-bg-el shadow-lg"
         >
-          {/* In-Play option */}
           <button
             type="button"
             role="option"
@@ -524,35 +434,23 @@ function LeagueDropdown({
             <span className="text-tm-tx-mut">({livePlayCount})</span>
           </button>
 
-          {sortedSports.map((sport) => {
-            const leagues = Array.from(leaguesBySport.get(sport)?.entries() ?? [])
-              .sort(([a], [b]) => a.localeCompare(b));
-            if (leagues.length === 0) return null;
+          {tags.map(({ tag, label, count }) => {
+            const isSelected = !inPlayMode && selectedTag === tag;
             return (
-              <div key={sport}>
-                <div className="px-3 py-1.5 bg-tm-bg-sunk border-b border-tm-bd font-mono text-[9px] uppercase tracking-[0.18em] text-tm-tx-mut">
-                  {sport}
-                </div>
-                {leagues.map(([league, count]) => {
-                  const isSelected = !inPlayMode && selectedSport === sport && selectedLeague === league;
-                  return (
-                    <button
-                      key={league}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => { onSelectLeague(sport, league); setOpen(false); }}
-                      className={cn(
-                        'w-full px-3 py-2 flex items-center justify-between font-mono text-[12px] tracking-[0.05em] border-b border-tm-bd/50 last:border-b-0 hover:bg-tm-bg-sunk transition-colors',
-                        isSelected ? 'bg-tm-sx/10 text-tm-sx font-semibold' : 'text-tm-tx',
-                      )}
-                    >
-                      <span className="truncate">{league}</span>
-                      <span className={cn('shrink-0', isSelected ? 'text-tm-sx/70' : 'text-tm-tx-mut')}>({count})</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <button
+                key={tag}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => { onSelectTag(tag); setOpen(false); }}
+                className={cn(
+                  'w-full px-3 py-2 flex items-center justify-between font-mono text-[12px] tracking-[0.05em] border-b border-tm-bd/50 last:border-b-0 hover:bg-tm-bg-sunk transition-colors',
+                  isSelected ? 'bg-tm-sx/10 text-tm-sx font-semibold' : 'text-tm-tx',
+                )}
+              >
+                <span className="truncate">{label}</span>
+                <span className={cn('shrink-0', isSelected ? 'text-tm-sx/70' : 'text-tm-tx-mut')}>({count})</span>
+              </button>
             );
           })}
         </div>
@@ -652,10 +550,9 @@ function collectPolyTokenIds(markets: Market[]): string[] {
 
 export function Markets() {
   const [error] = useState<string | null>(null);
-  const [selectedLeague, setSelectedLeague] = useState<string>('MLB');
-  const [selectedSport, setSelectedSport] = useState<string>('Baseball');
+  const [eventTags, setEventTags] = useState<string[]>(() => [...DEFAULT_EVENT_CLASSIFICATION_TAGS]);
+  const [selectedLeague, setSelectedLeague] = useState<string>(DEFAULT_EVENT_CLASSIFICATION_TAGS[0] ?? 'nba');
   const [inPlayMode, setInPlayMode] = useState<boolean>(false);
-  const [expandedSports, setExpandedSports] = useState<Set<string>>(new Set());
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const [selection, setSelection] = useState<BetSlipSelection | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
@@ -663,6 +560,22 @@ export function Markets() {
   // and marketUpsert/marketRemoved deltas thereafter. No periodic REST polling.
   const { markets, loading } = useMarketList();
   const liveOdds = useLiveOdds();
+
+  useEffect(() => {
+    getConfig()
+      .then((rows) => {
+        const raw = rows.find((r) => r.key === 'eventClassificationTags')?.value ?? '';
+        setEventTags(parseEventClassificationTags(raw));
+      })
+      .catch(() => {
+        /* keep defaults */
+      });
+  }, []);
+
+  useEffect(() => {
+    if (eventTags.length === 0) return;
+    setSelectedLeague((prev) => (eventTags.includes(prev) ? prev : eventTags[0]!));
+  }, [eventTags]);
   const polyTokenIds = useMemo(() => collectPolyTokenIds(markets), [markets]);
   const livePolyOdds = useLivePolyOdds(polyTokenIds);
   const liveFixtures = useLiveFixtureState();
@@ -715,47 +628,34 @@ export function Markets() {
     [],
   );
 
-  const sports = useMemo(() => {
-    const s = new Set<string>();
-    for (const g of allGroups) s.add(g.sport);
-    return Array.from(s).sort();
-  }, [allGroups]);
-
-  useEffect(() => {
-    if (sports.length === 0) return;
-    setExpandedSports((prev) => (prev.size === 0 ? new Set(sports) : prev));
-  }, [sports]);
-
-  const sportFiltered = useMemo(
-    () => (selectedSport === 'all' ? allGroups : allGroups.filter((g) => g.sport === selectedSport)),
-    [allGroups, selectedSport],
+  const taggedGroups = useMemo(
+    () => allGroups.filter((g) => eventTags.some((t) => leagueMatchesEventTag(g.league, t))),
+    [allGroups, eventTags],
   );
 
-  const leaguesBySport = useMemo(() => {
-    const byS = new Map<string, Map<string, number>>();
-    for (const g of allGroups) {
-      if (!byS.has(g.sport)) byS.set(g.sport, new Map());
-      const lm = byS.get(g.sport)!;
-      lm.set(g.league, (lm.get(g.league) ?? 0) + 1);
-    }
-    return byS;
-  }, [allGroups]);
+  const leagueNavTags = useMemo((): LeagueNavTag[] => {
+    return eventTags.map((tag) => ({
+      tag,
+      label: tag.toUpperCase(),
+      count: taggedGroups.filter((g) => leagueMatchesEventTag(g.league, tag)).length,
+    }));
+  }, [eventTags, taggedGroups]);
 
   const livePlayCount = useMemo(
     () =>
-      allGroups.reduce((n, g) => {
+      taggedGroups.reduce((n, g) => {
         if (!g.sxEventId) return n;
         return isLive(liveFixtures.states.get(g.sxEventId)) ? n + 1 : n;
       }, 0),
-    [allGroups, liveFixtures.states],
+    [taggedGroups, liveFixtures.states],
   );
 
   const filteredGroups = useMemo(() => {
     if (inPlayMode) {
-      return allGroups.filter((g) => g.sxEventId && isLive(liveFixtures.states.get(g.sxEventId)));
+      return taggedGroups.filter((g) => g.sxEventId && isLive(liveFixtures.states.get(g.sxEventId)));
     }
-    return selectedLeague === 'all' ? sportFiltered : sportFiltered.filter((g) => g.league === selectedLeague);
-  }, [inPlayMode, allGroups, liveFixtures.states, sportFiltered, selectedLeague]);
+    return taggedGroups.filter((g) => leagueMatchesEventTag(g.league, selectedLeague));
+  }, [inPlayMode, taggedGroups, liveFixtures.states, selectedLeague]);
 
   const groupsByDate = useMemo(() => {
     const byDate = new Map<string, MatchGroup[]>();
@@ -776,15 +676,12 @@ export function Markets() {
 
   const handleSelectInPlay = useCallback(() => {
     setInPlayMode(true);
-    setSelectedSport('all');
-    setSelectedLeague('all');
     setSelectedGroupKey(null);
   }, []);
 
-  const handleSelectLeague = useCallback((sport: string, league: string) => {
+  const handleSelectTag = useCallback((tag: string) => {
     setInPlayMode(false);
-    setSelectedSport(sport);
-    setSelectedLeague(league);
+    setSelectedLeague(tag);
     setSelectedGroupKey(null);
   }, []);
 
@@ -808,16 +705,12 @@ export function Markets() {
 
   const leagueTree = (
     <LeagueTree
-      sports={sports}
-      leaguesBySport={leaguesBySport}
-      expandedSports={expandedSports}
-      setExpandedSports={setExpandedSports}
-      selectedSport={selectedSport}
-      selectedLeague={selectedLeague}
+      tags={leagueNavTags}
+      selectedTag={selectedLeague}
       inPlayMode={inPlayMode}
       livePlayCount={livePlayCount}
       onSelectInPlay={handleSelectInPlay}
-      onSelectLeague={handleSelectLeague}
+      onSelectTag={handleSelectTag}
     />
   );
 
@@ -849,14 +742,12 @@ export function Markets() {
                 (native <select> opens an unstyled OS picker on iOS/macOS). */}
             <div className="md:hidden shrink-0 px-3 py-2 bg-tm-bg-sunk border-b border-tm-bd">
               <LeagueDropdown
-                sports={sports}
-                leaguesBySport={leaguesBySport}
-                selectedSport={selectedSport}
-                selectedLeague={selectedLeague}
+                tags={leagueNavTags}
+                selectedTag={selectedLeague}
                 inPlayMode={inPlayMode}
                 livePlayCount={livePlayCount}
                 onSelectInPlay={handleSelectInPlay}
-                onSelectLeague={handleSelectLeague}
+                onSelectTag={handleSelectTag}
               />
             </div>
 
@@ -867,9 +758,7 @@ export function Markets() {
                     ? '暂无市场数据 — 同步任务可能仍在运行。'
                     : inPlayMode
                       ? '当前没有进行中的比赛。'
-                      : selectedLeague === 'all'
-                        ? '当前筛选下暂无比赛。'
-                        : `暂无「${selectedLeague}」相关市场。`}
+                      : `暂无「${selectedLeague.toUpperCase()}」相关市场。`}
                 </p>
               ) : (
                 Array.from(groupsByDate.entries()).map(([dateKey, dateGroups]) => {

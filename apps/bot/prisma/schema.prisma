@@ -1,10 +1,8 @@
 generator client {
   provider = "prisma-client-js"
-  // Hoisted monorepo: write to repo-root `node_modules/.prisma/client`. `@prisma/client/default.js`
-  // does `require(".prisma/client/default")` — Node treats that as the *package* `.prisma`, i.e.
-  // this folder, NOT `./.prisma` under `@prisma/client`. Generating only under `@prisma/client/.prisma`
-  // leaves runtime loading a stale `node_modules/.prisma/client`.
-  output   = "../../node_modules/.prisma/client"
+  // Hoisted monorepo: schema is under apps/bot/prisma → three levels up is repo root.
+  // `@prisma/client` loads repo-root `node_modules/.prisma/client` (not only under the package).
+  output   = "../../../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -124,11 +122,12 @@ model PolymarketAccount {
   updatedAt      DateTime @updatedAt
 }
 
-/** Open Polymarket YES position tracked for dashboard 风控 (fills from this bot only). */
+/** Open Polymarket YES position tracked for dashboard 风控 (bot fills + CLOB user channel / REST sync). */
 model RiskPosition {
   id             String   @id @default(cuid())
   platform       String   @default("polymarket")
-  outcomeId      String
+  /** Set when matched to a synced Outcome row; null for website-only positions not in local DB. */
+  outcomeId      String?
   tokenId        String
   title          String
   sideLabel      String
@@ -137,13 +136,22 @@ model RiskPosition {
   costUsd        Float
   highWaterCents Float
   stopLossPct    Float
+  /** bot = opened via this router; polymarket_clob = user WS / REST trade sync */
+  source         String   @default("bot")
   status         String   @default("open") // open | closing | closed
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  outcome        Outcome  @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  outcome        Outcome? @relation(fields: [outcomeId], references: [id], onDelete: SetNull)
   tasks          RiskTask[]
 
   @@index([status])
+  @@index([tokenId])
+}
+
+/** Dedupe Polymarket CLOB trade ids applied to RiskPosition (user channel + REST fallback). */
+model RiskAppliedClobTrade {
+  id        String   @id
+  createdAt DateTime @default(now())
 }
 
 /** Retryable stop-loss / manual close jobs (FOK sell with 10-tick slippage floor). */

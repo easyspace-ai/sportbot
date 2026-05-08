@@ -1,5 +1,12 @@
-import { AssetType, Side, OrderType } from '@polymarket/clob-client-v2';
+import { ApiError, AssetType, Side, OrderType } from '@polymarket/clob-client-v2';
+import { getPolymarketFokBuyExtraTicks, getPolymarketFokSellExtraTicks } from '../effectiveBotSettings';
 import { getPolymarketClobClient } from '../services/polymarketTrading';
+import { bestAskPrice, bestBidPrice } from '../services/clobOrderBook';
+
+function tokenShort(id: string): string {
+  if (id.length <= 22) return id;
+  return `${id.slice(0, 12)}…${id.slice(-8)}`;
+}
 
 export interface PolyFillResult {
   orderId: string;
@@ -7,68 +14,112 @@ export interface PolyFillResult {
   fillOdds: number;
 }
 
-/** FOK SELL: worst price = best bid minus 10 tick sizes (floored at tick), to improve fill odds. */
+/** FOK SELL: worst price = best bid minus configured extra ticks (floored at tick). */
 export async function executePolymarketSell(
   tokenId: string,
   sizeShares: number,
 ): Promise<{ orderId: string; soldShares: number }> {
+  const tok = tokenShort(tokenId);
   const client = await getPolymarketClobClient();
-  const [tickSize, negRisk, book] = await Promise.all([
-    client.getTickSize(tokenId),
-    client.getNegRisk(tokenId),
-    client.getOrderBook(tokenId),
-  ]);
 
-  const tick = parseFloat(String(tickSize));
-  const bestBid = parseFloat(book.bids[0]?.price ?? '0');
-  if (!Number.isFinite(bestBid) || bestBid <= 0) {
-    throw new Error('no_bid_liquidity');
+  let tickSize: Awaited<ReturnType<typeof client.getTickSize>>;
+  let negRisk: boolean;
+  let book: Awaited<ReturnType<typeof client.getOrderBook>>;
+  try {
+    [tickSize, negRisk, book] = await Promise.all([
+      client.getTickSize(tokenId),
+      client.getNegRisk(tokenId),
+      client.getOrderBook(tokenId),
+    ]);
+  } catch (err) {
+    const inner = err instanceof Error ? err.message : String(err);
+    const extra = err instanceof ApiError ? ` httpStatus=${err.status}` : '';
+    throw new Error(`getMarketParams_failed token=${tok}${extra}: ${inner}`, { cause: err });
   }
 
-  const bal = await client.getBalanceAllowance({
-    asset_type: AssetType.CONDITIONAL,
-    token_id: tokenId,
-  });
+  const tick = parseFloat(String(tickSize));
+  const bestBid = bestBidPrice(book.bids) ?? 0;
+  const bidLevels = book.bids?.length ?? 0;
+  if (!Number.isFinite(bestBid) || bestBid <= 0) {
+    throw new Error(
+      `no_bid_liquidity token=${tok} tick=${tick} bidLevels=${bidLevels} requestedShares=${sizeShares}`,
+    );
+  }
+
+  let bal: Awaited<ReturnType<typeof client.getBalanceAllowance>>;
+  try {
+    bal = await client.getBalanceAllowance({
+      asset_type: AssetType.CONDITIONAL,
+      token_id: tokenId,
+    });
+  } catch (err) {
+    const inner = err instanceof Error ? err.message : String(err);
+    const extra = err instanceof ApiError ? ` httpStatus=${err.status}` : '';
+    throw new Error(`getBalanceAllowance_failed token=${tok}${extra}: ${inner}`, { cause: err });
+  }
+
   const onChain = parseFloat(bal.balance);
   const sellAmount = Math.min(
     sizeShares,
     Number.isFinite(onChain) && onChain > 0 ? onChain : sizeShares,
   );
   if (!Number.isFinite(sellAmount) || sellAmount <= 0) {
-    throw new Error('zero_conditional_balance');
+    throw new Error(
+      `zero_conditional_balance token=${tok} requestedShares=${sizeShares} clobBalanceRaw=${bal.balance} parsed=${onChain}`,
+    );
   }
 
-  const floorPrice = Math.max(tick, bestBid - 10 * tick);
+  const sellExtraTicks = getPolymarketFokSellExtraTicks();
+  const floorPrice = Math.max(tick, bestBid - sellExtraTicks * tick);
 
-  const order = await client.createMarketOrder(
-    {
-      tokenID: tokenId,
-      side: Side.SELL,
-      amount: sellAmount,
-      price: floorPrice,
-      orderType: OrderType.FOK,
-    },
-    { tickSize, negRisk },
-  );
+  let order: Awaited<ReturnType<typeof client.createMarketOrder>>;
+  try {
+    order = await client.createMarketOrder(
+      {
+        tokenID: tokenId,
+        side: Side.SELL,
+        amount: sellAmount,
+        price: floorPrice,
+        orderType: OrderType.FOK,
+      },
+      { tickSize, negRisk },
+    );
+  } catch (err) {
+    const inner = err instanceof Error ? err.message : String(err);
+    const extra = err instanceof ApiError ? ` httpStatus=${err.status}` : '';
+    throw new Error(
+      `createMarketOrder_failed token=${tok} sellAmount=${sellAmount} floorPrice=${floorPrice} bestBid=${bestBid} tick=${tick} negRisk=${negRisk} extraTicks=${sellExtraTicks}${extra}: ${inner}`,
+      { cause: err },
+    );
+  }
 
   try {
     const result = await client.postOrder(order, OrderType.FOK);
     if (!result.success) {
-      throw new Error(`Polymarket sell rejected: ${result.errorMsg ?? JSON.stringify(result)}`);
+      const detail = result.errorMsg ?? JSON.stringify(result);
+      throw new Error(
+        `postOrder_rejected token=${tok} sellAmount=${sellAmount} floorPrice=${floorPrice}: ${detail}`,
+      );
     }
     return {
       orderId: result.orderID ?? `order_${Date.now()}`,
       soldShares: sellAmount,
     };
-  } catch (err: any) {
-    if (err?.message?.includes('maker address not allowed')) {
+  } catch (err: unknown) {
+    const inner = err instanceof Error ? err.message : String(err);
+    if (inner.includes('maker address not allowed')) {
       throw new Error(
         'Polymarket 订单被拒：maker 地址不被允许。' +
           '本 bot 固定 POLY_1271：funder 须为 CREATE2 推导的 deposit 钱包（与私钥对应 EOA 唯一确定）。' +
           '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 .env 四项是否与该 EOA 匹配。',
+        { cause: err instanceof Error ? err : undefined },
       );
     }
-    throw err;
+    const extra = err instanceof ApiError ? ` httpStatus=${err.status} body=${JSON.stringify(err.data)}` : '';
+    throw new Error(
+      `postOrder_failed token=${tok} sellAmount=${sellAmount} floorPrice=${floorPrice} bestBid=${bestBid} tick=${tick}${extra}: ${inner}`,
+      { cause: err instanceof Error ? err : undefined },
+    );
   }
 }
 
@@ -91,17 +142,31 @@ export async function executePolymarketOrder(
 
   // tickSize and negRisk are per-market requirements for order signing.
   // negRisk is true for multi-outcome markets (e.g. soccer home/draw/away).
-  const [tickSize, negRisk] = await Promise.all([
+  const [tickSize, negRisk, book] = await Promise.all([
     client.getTickSize(tokenId),
     client.getNegRisk(tokenId),
+    client.getOrderBook(tokenId),
   ]);
+
+  const tick = parseFloat(String(tickSize));
+  const buyExtraTicks = getPolymarketFokBuyExtraTicks();
+  let limitPrice = price;
+  if (Number.isFinite(tick) && tick > 0) {
+    const bestAsk = bestAskPrice(book.asks);
+    if (bestAsk != null && Number.isFinite(bestAsk)) {
+      const padded = bestAsk + buyExtraTicks * tick;
+      const cap = 1 - tick;
+      limitPrice = Math.min(cap, Math.max(price, padded));
+    }
+    limitPrice = Math.max(tick, Math.min(1 - tick, limitPrice));
+  }
 
   const order = await client.createMarketOrder(
     {
       tokenID: tokenId,
       side: Side.BUY,
       amount: size, // pUSD to spend
-      price,        // worst-case price — FOK cancels if market moved past this
+      price: limitPrice,
     },
     { tickSize, negRisk },
   );
@@ -114,7 +179,7 @@ export async function executePolymarketOrder(
     return {
       orderId: result.orderID ?? `order_${Date.now()}`,
       filledSize: size,
-      fillOdds: price,
+      fillOdds: limitPrice,
     };
   } catch (err: any) {
     if (err?.message?.includes('maker address not allowed')) {

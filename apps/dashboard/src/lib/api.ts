@@ -239,6 +239,18 @@ export interface RiskPositionRow {
   maxPayoffUsd: number;
   potentialProfitUsd: number;
   status: string;
+  /** bot = 本系统路由成交；polymarket_clob = CLOB 用户通道 / REST 同步 */
+  source?: string;
+}
+
+export interface RiskPositionsMeta {
+  userWsConnected: boolean;
+  userWsConnecting?: boolean;
+  userWsLastMessageAt: string | null;
+  restTradesSyncLastAt: string | null;
+  /** Bot-reported last WS/credentials issue. */
+  userWsLastIssue?: string | null;
+  minOpenRiskShares?: number;
 }
 
 export interface RiskTaskRow {
@@ -253,7 +265,7 @@ export interface RiskTaskRow {
 }
 
 export const getRiskPositions = () =>
-  apiFetch<{ positions: RiskPositionRow[] }>('/api/risk/positions');
+  apiFetch<{ positions: RiskPositionRow[]; meta?: RiskPositionsMeta }>('/api/risk/positions');
 
 export const getRiskTasks = (limit = 40) =>
   apiFetch<{ tasks: RiskTaskRow[] }>(`/api/risk/tasks?limit=${limit}`);

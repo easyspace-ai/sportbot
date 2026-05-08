@@ -5,6 +5,8 @@ import {
   listRecentRiskTasks,
   listRiskPositionsEnriched,
 } from '../services/riskService';
+import { getMinOpenRiskShares } from '../effectiveBotSettings';
+import { getPolymarketUserWsMeta } from '../services/polymarketUserWs';
 import { createLogger } from '../logger';
 
 const log = createLogger('risk-http');
@@ -13,7 +15,18 @@ const router = Router();
 router.get('/api/risk/positions', async (_req: Request, res: Response) => {
   try {
     const positions = await listRiskPositionsEnriched();
-    res.json({ positions });
+    const ws = getPolymarketUserWsMeta();
+    res.json({
+      positions,
+      meta: {
+        userWsConnected: ws.connected,
+        userWsConnecting: ws.connecting,
+        userWsLastMessageAt: ws.lastMessageAt,
+        restTradesSyncLastAt: ws.restTradesSyncLastAt,
+        userWsLastIssue: ws.lastIssue,
+        minOpenRiskShares: getMinOpenRiskShares(),
+      },
+    });
   } catch (err) {
     log.error({ err }, 'list risk positions failed');
     res.status(500).json({ error: 'internal_server_error' });

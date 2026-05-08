@@ -1,36 +1,32 @@
-import type { Dispatch, SetStateAction } from 'react';
 import { cn } from '../lib/utils';
 
+export interface LeagueNavTag {
+  /** Lowercase tag (matches `eventClassificationTags` / `group.league` case-insensitively) */
+  tag: string;
+  /** Shown in sidebar (e.g. NBA) */
+  label: string;
+  count: number;
+}
+
 interface LeagueTreeProps {
-  sports: string[];
-  /** Map<sport, Map<league, count>> */
-  leaguesBySport: Map<string, Map<string, number>>;
-  expandedSports: Set<string>;
-  setExpandedSports: Dispatch<SetStateAction<Set<string>>>;
-  selectedSport: string;
-  selectedLeague: string;
+  tags: LeagueNavTag[];
+  selectedTag: string;
   inPlayMode: boolean;
   livePlayCount: number;
   onSelectInPlay: () => void;
-  onSelectLeague: (sport: string, league: string) => void;
+  onSelectTag: (tag: string) => void;
 }
 
 /**
- * Presentational league/sport tree. The same component services the desktop sidebar
- * and the mobile <LeagueDrawer>. No data fetching of its own — every piece of state
- * (expanded sports, selection) lives in the parent and is passed down.
+ * Market league sidebar: 进行中 + flat list of configured classification tags with counts.
  */
 export function LeagueTree({
-  sports,
-  leaguesBySport,
-  expandedSports,
-  setExpandedSports,
-  selectedSport,
-  selectedLeague,
+  tags,
+  selectedTag,
   inPlayMode,
   livePlayCount,
   onSelectInPlay,
-  onSelectLeague,
+  onSelectTag,
 }: LeagueTreeProps) {
   return (
     <div className="p-2">
@@ -59,48 +55,21 @@ export function LeagueTree({
         </span>
         <span className="font-mono text-[10px] text-tm-tx-mut ml-2 shrink-0">{livePlayCount}</span>
       </button>
-      {sports.map((sport) => {
-        const isExpanded = expandedSports.has(sport);
-        const leagues = Array.from(leaguesBySport.get(sport)?.entries() ?? []).sort(
-          ([a], [b]) => a.localeCompare(b),
-        );
-        return (
-          <div key={sport} className="mt-1">
-            <button
-              onClick={() =>
-                setExpandedSports((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(sport)) next.delete(sport);
-                  else next.add(sport);
-                  return next;
-                })
-              }
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 font-mono text-[10px] font-semibold tracking-[0.18em] text-tm-tx-dim hover:text-tm-tx uppercase"
-            >
-              <span className={cn('inline-block transition-transform', isExpanded && 'rotate-90')}>
-                ▸
-              </span>
-              <span className="truncate text-left">{sport}</span>
-            </button>
-            {isExpanded &&
-              leagues.map(([league, count]) => (
-                <button
-                  key={league}
-                  onClick={() => onSelectLeague(sport, league)}
-                  className={cn(
-                    'w-full flex items-center justify-between px-2 py-1.5 pl-6 text-[13px] transition-colors',
-                    !inPlayMode && selectedLeague === league && selectedSport === sport
-                      ? 'bg-tm-bg-el text-tm-tx border-l-2 border-tm-sx pl-[22px]'
-                      : 'text-tm-tx-dim hover:text-tm-tx hover:bg-tm-bg-el/60',
-                  )}
-                >
-                  <span className="truncate text-left">{league}</span>
-                  <span className="font-mono text-[10px] text-tm-tx-mut ml-2 shrink-0">{count}</span>
-                </button>
-              ))}
-          </div>
-        );
-      })}
+      {tags.map(({ tag, label, count }) => (
+        <button
+          key={tag}
+          onClick={() => onSelectTag(tag)}
+          className={cn(
+            'w-full flex items-center justify-between px-2 py-1.5 mt-0.5 text-[13px] transition-colors',
+            !inPlayMode && selectedTag === tag
+              ? 'bg-tm-bg-el text-tm-tx border-l-2 border-tm-sx pl-[6px]'
+              : 'text-tm-tx-dim hover:text-tm-tx hover:bg-tm-bg-el/60',
+          )}
+        >
+          <span className="truncate text-left font-medium">{label}</span>
+          <span className="font-mono text-[10px] text-tm-tx-mut ml-2 shrink-0">{count}</span>
+        </button>
+      ))}
     </div>
   );
 }

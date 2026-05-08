@@ -29,6 +29,13 @@ function validateConfigPut(key: string, value: string): string | null {
     }
   }
 
+  if (key === 'polymarketFokBuyExtraTicks' || key === 'polymarketFokSellExtraTicks') {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < 0 || parsed > 50) {
+      return `${key} must be an integer between 0 and 50`;
+    }
+  }
+
   if (key === 'httpPlatformProxyUrl') {
     const t = value.trim();
     if (t === '') return null;
@@ -48,6 +55,13 @@ function validateConfigPut(key: string, value: string): string | null {
     }
     if (parsed.some((s: string) => !String(s).trim())) {
       return 'eventClassificationTags entries must be non-empty strings';
+    }
+  }
+
+  if (key === 'minOpenRiskShares') {
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1_000_000) {
+      return 'minOpenRiskShares must be a number > 0 and ≤ 1000000';
     }
   }
 
@@ -119,6 +133,7 @@ router.put('/api/config/:key', async (req: Request, res: Response) => {
     }
     if (key === 'httpPlatformProxyUrl') {
       applyProxyFromDb();
+      void import('../services/polymarketUserWs').then((m) => m.hardResetPolymarketUserWs());
     }
     res.json(row);
   } catch (err) {

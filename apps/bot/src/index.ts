@@ -16,6 +16,8 @@ import { startTelegramBot } from './telegram/bot';
 import { startWsRelay } from './ws/relay';
 import { startCentrifugoService } from './services/centrifugo';
 import { startPolymarketWsService } from './services/polymarketWs';
+import { startPolymarketUserWsService } from './services/polymarketUserWs';
+import { startRiskPolymarketBookBridge } from './services/riskPolymarketBookBridge';
 import { startPersistentPolyOddsService } from './services/persistentPolyOdds';
 import { startFixtureFinalizer } from './services/sxFixtureService';
 import { processRiskTasksOnce } from './services/riskService';
@@ -53,6 +55,8 @@ async function main() {
       startFixtureFinalizer();
       startCentrifugoService();
       startPolymarketWsService();
+      startRiskPolymarketBookBridge();
+      startPolymarketUserWsService();
       startPersistentPolyOddsService();
       startMarketSync();
     });
@@ -65,6 +69,8 @@ async function main() {
     startFixtureFinalizer();
     startCentrifugoService();
     startPolymarketWsService();
+    startRiskPolymarketBookBridge();
+    startPolymarketUserWsService();
     startPersistentPolyOddsService();
     startMarketSync();
     setInterval(() => {
