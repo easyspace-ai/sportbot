@@ -9,12 +9,12 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build:main": "node ../../node_modules/esbuild/bin/esbuild src/main/index.ts --bundle --platform=node --format=cjs --outfile=dist/main.cjs --external:electron",
-    "build:preload": "node ../../node_modules/esbuild/bin/esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --outfile=dist/preload.cjs --external:electron",
-    "build:renderer": "vite build",
+    "build:main": "bun build src/main/index.ts --outfile=dist/main.cjs --target=node --format=cjs --external=electron",
+    "build:preload": "bun build src/preload/preload.ts --outfile=dist/preload.cjs --target=node --format=cjs --external=electron",
+    "build:renderer": "vite build --config vite.config.mjs",
     "build:copy": "bun ../../scripts/electron-build-resources.ts",
     "build": "bun run build:main && bun run build:preload && bun run build:renderer && bun run build:copy",
-    "dev": "vite dev",
+    "dev": "vite dev --config vite.config.mjs",
     "typecheck": "tsc --noEmit",
     "start": "bun run build && electron ."
   },

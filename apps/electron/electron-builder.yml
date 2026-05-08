@@ -1,5 +1,4 @@
 appId: com.polylzz.electron-shell
-# 可执行文件名不能含空格，否则 macOS 打包 rename 会失败
 productName: PolyBot
 copyright: Copyright © 2026
 
@@ -10,8 +9,8 @@ directories:
   buildResources: build
 
 files:
-  - dist/**/*
-  - "!**/*.map"
+  - dist/main.cjs
+  - dist/preload.cjs
   - package.json
   - "!node_modules/**/*"
 
@@ -19,9 +18,14 @@ extraMetadata:
   main: dist/main.cjs
 
 asar: true
+
 extraResources:
   - from: resources/backend
     to: backend
+    filter:
+      - "**/*"
+  - from: resources/dashboard
+    to: dashboard
     filter:
       - "**/*"
 
@@ -31,7 +35,6 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # 本机 Apple Silicon 仅需 arm64；若需 Intel 安装包再恢复 x64（会多一份 ~250MB 复制）
   target:
     - target: dmg
       arch:

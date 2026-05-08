@@ -6,7 +6,7 @@ Sports Prediction Market Router — a personal trading bot that browses sports m
 
 ## Stack
 
-- Runtime: TypeScript + Node.js
+- Runtime: TypeScript + Bun (workspaces) / Node-compatible bot process
 - Web dashboard: React + Vite + Tailwind CSS + shadcn/ui
 - Database: SQLite + Prisma
 - Telegram controller: grammY
@@ -16,11 +16,12 @@ Sports Prediction Market Router — a personal trading bot that browses sports m
 ## Commands
 
 ```
-dev:   npm run dev        # bot engine + API + dashboard concurrently
-test:  npm run test       # vitest
-build: npm run build      # tsc + vite build
-lint:  npm run lint       # eslint
-check: npm run typecheck  # tsc --noEmit
+dev:   bun run dev              # apps/bot + apps/dashboard concurrently
+test:  bun run test             # vitest (bot)
+build: bun run build            # clob-client-v2 + bot + dashboard
+lint:  bun run lint              # eslint (bot + dashboard)
+check: bun run typecheck        # tsc --noEmit (bot + dashboard + electron)
+electron:dev: bun run electron:dev   # dashboard Vite + Electron; bot started by main
 ```
 
 ## Conventions

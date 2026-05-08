@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { asFetch } from '../test/fetchMock';
 
 vi.mock('../config', () => ({
   config: { SX_BET_API_URL: 'https://api.sx.bet', LOG_LEVEL: 'silent', NODE_ENV: 'test' },
@@ -83,10 +84,12 @@ function makeOrder(marketHash: string, makerOdds: number, isMakerBettingOutcomeO
 
 function makeFetch(responses: Array<{ ok: boolean; json: object }>) {
   let call = 0;
-  return vi.fn().mockImplementation(() => {
-    const r = responses[call++ % responses.length];
-    return Promise.resolve({ ok: r.ok, status: 200, json: () => Promise.resolve(r.json) });
-  });
+  return asFetch(
+    vi.fn().mockImplementation(() => {
+      const r = responses[call++ % responses.length];
+      return Promise.resolve({ ok: r.ok, status: 200, json: () => Promise.resolve(r.json) });
+    }),
+  );
 }
 
 describe('fetchSxBetMarkets', () => {
@@ -274,13 +277,15 @@ describe('fetchSxBetMarkets', () => {
   });
 
   it('returns markets with zero odds when orders fetch fails', async () => {
-    global.fetch = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ data: { markets: [MOCK_MARKET_HOME], nextKey: '' } }),
       })
       .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    global.fetch = asFetch(fetchMock);
 
     const { fetchSxBetMarkets } = await import('./sxbet');
     const quotes = await fetchSxBetMarkets();

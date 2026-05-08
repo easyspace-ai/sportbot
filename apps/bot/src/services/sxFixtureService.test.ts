@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { asFetch } from '../test/fetchMock';
 
 vi.mock('../config', () => ({
   config: { SX_BET_API_URL: 'https://api.sx.bet', SX_BET_API_KEY: 'test-key', LOG_LEVEL: 'silent', NODE_ENV: 'test' },
@@ -30,18 +31,20 @@ import { fixtureStateCache, FIXTURE_STATUS } from './fixtureStateCache';
 
 function mockFetchJson(responses: Array<{ url?: RegExp; body: unknown; ok?: boolean; status?: number }>): void {
   let i = 0;
-  global.fetch = vi.fn(async (url: string) => {
-    const next = responses[Math.min(i, responses.length - 1)];
-    if (next.url && !next.url.test(url)) {
-      throw new Error(`unexpected url ${url}`);
-    }
-    i += 1;
-    return {
-      ok: next.ok ?? true,
-      status: next.status ?? 200,
-      json: async () => next.body,
-    } as Response;
-  }) as unknown as typeof fetch;
+  global.fetch = asFetch(
+    vi.fn(async (url: string) => {
+      const next = responses[Math.min(i, responses.length - 1)];
+      if (next.url && !next.url.test(url)) {
+        throw new Error(`unexpected url ${url}`);
+      }
+      i += 1;
+      return {
+        ok: next.ok ?? true,
+        status: next.status ?? 200,
+        json: async () => next.body,
+      } as Response;
+    }),
+  );
 }
 
 describe('sxFixtureService', () => {
@@ -59,7 +62,7 @@ describe('sxFixtureService', () => {
 
   describe('seedFixtureStatuses', () => {
     it('is a no-op for empty ids', async () => {
-      global.fetch = vi.fn();
+      global.fetch = asFetch(vi.fn());
       await seedFixtureStatuses([]);
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -67,11 +70,13 @@ describe('sxFixtureService', () => {
     it('batches requests in chunks of 30', async () => {
       const ids = Array.from({ length: 75 }, (_, i) => `L${i}`);
       const body = { status: 'success', data: {} };
-      const fetchMock = vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => body,
-      })) as unknown as typeof fetch;
+      const fetchMock = asFetch(
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => body,
+        })),
+      );
       global.fetch = fetchMock;
 
       await seedFixtureStatuses(ids);
@@ -142,11 +147,13 @@ describe('sxFixtureService', () => {
 
     it('batches in chunks of 30', async () => {
       const ids = Array.from({ length: 31 }, (_, i) => `L${i}`);
-      const fetchMock = vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({ status: 'success', data: [] }),
-      })) as unknown as typeof fetch;
+      const fetchMock = asFetch(
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ status: 'success', data: [] }),
+        })),
+      );
       global.fetch = fetchMock;
 
       await seedLiveScores(ids);
@@ -164,14 +171,16 @@ describe('sxFixtureService', () => {
         { sxEventId: null }, // ignored
       ]);
 
-      const fetchMock = vi.fn(async (url: string) => ({
-        ok: true,
-        status: 200,
-        json: async () =>
-          url.includes('/fixture/status')
-            ? { status: 'success', data: { L1: { status: 2 }, L2: { status: 1 } } }
-            : { status: 'success', data: [] },
-      })) as unknown as typeof fetch;
+      const fetchMock = asFetch(
+        vi.fn(async (url: string) => ({
+          ok: true,
+          status: 200,
+          json: async () =>
+            url.includes('/fixture/status')
+              ? { status: 'success', data: { L1: { status: 2 }, L2: { status: 1 } } }
+              : { status: 'success', data: [] },
+        })),
+      );
       global.fetch = fetchMock;
 
       await seedAllFixtureState();
@@ -185,7 +194,7 @@ describe('sxFixtureService', () => {
 
     it('is a no-op when no events have sxEventId', async () => {
       (prisma.event.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-      global.fetch = vi.fn();
+      global.fetch = asFetch(vi.fn());
       await seedAllFixtureState();
       expect(global.fetch).not.toHaveBeenCalled();
     });

@@ -11,6 +11,9 @@ const ELECTRON_DIR = join(ROOT_DIR, "apps/electron");
 const dirsToClean = [
   join(ELECTRON_DIR, "dist"),
   join(ELECTRON_DIR, "release"),
+  join(ELECTRON_DIR, ".backend-staging"),
+  join(ELECTRON_DIR, "resources", "backend"),
+  join(ELECTRON_DIR, "resources", "dashboard"),
 ];
 
 for (const dir of dirsToClean) {

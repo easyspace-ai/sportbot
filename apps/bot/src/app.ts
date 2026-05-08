@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
 import healthRouter from './routes/health';
 import marketsRouter from './routes/markets';
 import tradeRouter from './routes/trade';
@@ -14,6 +15,7 @@ import { createLogger } from './logger';
 const log = createLogger('http');
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 app.use(healthRouter);
 app.use(marketsRouter);

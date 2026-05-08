@@ -2,7 +2,7 @@ import path from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
-// This file lives at bot/src/db — DB file is at bot/prisma/dev.db (not bot/src/prisma).
+// This file lives at apps/bot/src/db — DB file is at apps/bot/prisma/dev.db (not under src/).
 const dbPath = path.resolve(__dirname, "..", "..", "prisma", "dev.db");
 const adapter = new PrismaLibSql({ url: `file:${dbPath}` });
 
@@ -32,7 +32,7 @@ let productionClient: PrismaClient | undefined;
 export function getPrisma(): PrismaClient {
   if (!bundleHasRiskModels()) {
     throw new Error(
-      "[db] Prisma JS bundle is missing RiskTask/RiskPosition. Run: cd bot && npx prisma generate — then restart.",
+      "[db] Prisma JS bundle is missing RiskTask/RiskPosition. Run: cd apps/bot && bunx prisma generate — then restart.",
     );
   }
 
@@ -54,7 +54,7 @@ export function getPrisma(): PrismaClient {
   if (!clientHasRiskDelegates(client)) {
     void client.$disconnect().catch(() => {});
     throw new Error(
-      "[db] PrismaClient instance has no riskTask delegate (stale or wrong client). Run: cd bot && npx prisma generate — then restart.",
+      "[db] PrismaClient instance has no riskTask delegate (stale or wrong client). Run: cd apps/bot && bunx prisma generate — then restart.",
     );
   }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { asFetch } from '../test/fetchMock';
 import { computeTakerOdds, startCentrifugoService } from './centrifugo';
 import { oddsCache } from './oddsCache';
 import { prisma } from '../db';
@@ -135,11 +136,13 @@ describe('startCentrifugoService', () => {
     vi.mocked(prisma.market.findMany).mockResolvedValue([{ externalId: '0xabc' } as never]);
     vi.mocked(prisma.outcome.findMany).mockResolvedValue([{ externalId: '0xabc:0' } as never]);
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ token: 'test-token' }),
-    }) as typeof fetch;
+    global.fetch = asFetch(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ token: 'test-token' }),
+      }),
+    );
 
     // Each call creates a fresh dedup closure
     startCentrifugoService();
@@ -187,7 +190,7 @@ describe('startCentrifugoService', () => {
 
   it('best_odds subscribed handler always calls REST seed', async () => {
     const seedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: { bestOdds: [] } }) });
-    global.fetch = seedFetch as typeof fetch;
+    global.fetch = asFetch(seedFetch);
 
     mockBestOddsSub.handlers['subscribed']();
 
@@ -204,7 +207,7 @@ describe('startCentrifugoService', () => {
 
   it('markets subscribed: wasRecovering=false calls markets seed', async () => {
     const seedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
-    global.fetch = seedFetch as typeof fetch;
+    global.fetch = asFetch(seedFetch);
 
     mockMarketsSub.handlers['subscribed']({ wasRecovering: false, recovered: false });
 
@@ -218,7 +221,7 @@ describe('startCentrifugoService', () => {
 
   it('markets subscribed: wasRecovering=true, recovered=true does NOT call seed', async () => {
     const seedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
-    global.fetch = seedFetch as typeof fetch;
+    global.fetch = asFetch(seedFetch);
 
     mockMarketsSub.handlers['subscribed']({ wasRecovering: true, recovered: true });
 
@@ -229,7 +232,7 @@ describe('startCentrifugoService', () => {
 
   it('markets subscribed: wasRecovering=true, recovered=false calls markets seed', async () => {
     const seedFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
-    global.fetch = seedFetch as typeof fetch;
+    global.fetch = asFetch(seedFetch);
 
     mockMarketsSub.handlers['subscribed']({ wasRecovering: true, recovered: false });
 

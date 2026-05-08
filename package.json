@@ -4,15 +4,16 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Electron + Vite + React 最小可打包壳（原业务代码已移除）",
-  "workspaces": [
-    "apps/electron"
-  ],
-  "trustedDependencies": [
-    "electron"
-  ],
+  "description": "Sports prediction router — bot + dashboard + Electron shell (Bun workspaces)",
+  "workspaces": ["apps/*", "packages/*"],
+  "trustedDependencies": ["electron"],
   "scripts": {
-    "typecheck": "cd apps/electron && bun run typecheck",
+    "postinstall": "node node_modules/electron/install.js",
+    "dev": "concurrently -n bot,dashboard -c blue,green --handle-input \"bun run --filter bot dev\" \"bun run --filter dashboard dev\"",
+    "build": "bun run --filter @polymarket/clob-client-v2 build && bun run --filter bot build && bun run --filter dashboard build",
+    "test": "bun run --filter bot test",
+    "typecheck": "bun run --filter bot typecheck && bun run --filter dashboard typecheck && bun run --filter @polyzeng/electron typecheck",
+    "lint": "bun run --filter bot lint && bun run --filter dashboard lint",
     "electron:clean": "bun run scripts/electron-clean.ts",
     "electron:build:main": "bun run scripts/electron-build-main.ts",
     "electron:build:preload": "bun run scripts/electron-build-preload.ts",
@@ -28,11 +29,11 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.0.8",
+    "@types/node": "^22.10.7",
     "@vitejs/plugin-react": "^5.1.2",
+    "concurrently": "^9.1.2",
     "electron": "^39.2.7",
     "electron-builder": "^26.0.12",
-    "esbuild": "^0.25.0",
     "typescript": "^5.0.0",
     "vite": "^6.2.4"
   }
