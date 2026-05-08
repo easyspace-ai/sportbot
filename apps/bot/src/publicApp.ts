@@ -1,6 +1,6 @@
-import cors from 'cors';
 import express, { Request, Response, NextFunction } from 'express';
 import healthRouter from './routes/health';
+import { corsMiddleware } from './httpCors';
 import marketsRouter from './routes/markets';
 import statsRouter from './routes/stats';
 import orderbookRouter from './routes/orderbook';
@@ -9,7 +9,7 @@ import { createLogger } from './logger';
 const log = createLogger('http:public');
 const publicApp = express();
 
-publicApp.use(cors());
+publicApp.use(corsMiddleware);
 publicApp.use(express.json());
 publicApp.use(healthRouter);
 publicApp.use(marketsRouter);

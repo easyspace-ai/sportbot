@@ -3,7 +3,7 @@ import { ApiError, AssetType } from '@polymarket/clob-client-v2';
 import { prisma } from '../db';
 import { createLogger } from '../logger';
 import { getMinOpenRiskShares, resolveStopLossPctForOpenYesCents } from '../effectiveBotSettings';
-import { executePolymarketSell } from '../executor/polymarket';
+import { conditionalBalanceToShareFloat, executePolymarketSell } from '../executor/polymarket';
 import { getPolymarketClobClient } from './polymarketTrading';
 import { bestBidPrice } from './clobOrderBook';
 import { polymarketBookCache } from './polymarketBookCache';
@@ -11,6 +11,9 @@ import { polymarketBookCache } from './polymarketBookCache';
 const log = createLogger('risk');
 
 const DEFAULT_STOP_PCT = 20;
+
+/** Serialize `ensureCloseTask` per position to avoid duplicate `close_position` rows under concurrent WS + poller. */
+const ensureCloseTaskTailByPosition = new Map<string, Promise<unknown>>();
 
 /** Only true float dust / empty book — used to mark `closed` without touching sub‑1 but ≥ dust positions. */
 const RISK_SHARE_DUST = 1e-5;
@@ -443,42 +446,44 @@ export async function reconcileOpenRiskPositionsWithClobBalances(): Promise<void
     return;
   }
 
-  for (const row of rows) {
-    try {
-      const bal = await client.getBalanceAllowance({
-        asset_type: AssetType.CONDITIONAL,
-        token_id: row.tokenId,
-      });
-      const onChain = parseFloat(String(bal.balance));
-      if (!Number.isFinite(onChain) || onChain < minShares) {
-        await prisma.riskPosition.update({
-          where: { id: row.id },
-          data: { status: 'closed', sizeShares: 0, costUsd: 0 },
+  await Promise.allSettled(
+    rows.map(async (row) => {
+      try {
+        const bal = await client.getBalanceAllowance({
+          asset_type: AssetType.CONDITIONAL,
+          token_id: row.tokenId,
         });
-        log.info(
-          { id: row.id, tokenId: row.tokenId, onChain, minShares },
-          'risk: position closed (CLOB balance below minOpenRiskShares)',
-        );
-        continue;
+        const onChainShares = conditionalBalanceToShareFloat(String(bal.balance));
+        if (!Number.isFinite(onChainShares) || onChainShares < minShares) {
+          await prisma.riskPosition.update({
+            where: { id: row.id },
+            data: { status: 'closed', sizeShares: 0, costUsd: 0 },
+          });
+          log.info(
+            { id: row.id, tokenId: row.tokenId, onChainShares, minShares },
+            'risk: position closed (CLOB balance below minOpenRiskShares)',
+          );
+          return;
+        }
+        if (onChainShares + 1e-9 < row.sizeShares) {
+          const ratio = onChainShares / row.sizeShares;
+          await prisma.riskPosition.update({
+            where: { id: row.id },
+            data: {
+              sizeShares: onChainShares,
+              costUsd: Math.max(0, row.costUsd * ratio),
+            },
+          });
+          log.info(
+            { id: row.id, tokenId: row.tokenId, dbShares: row.sizeShares, onChainShares },
+            'risk: position size reconciled to CLOB balance',
+          );
+        }
+      } catch (err) {
+        log.debug({ err, tokenId: row.tokenId }, 'risk: reconcile balance skipped for token');
       }
-      if (onChain + 1e-6 < row.sizeShares) {
-        const ratio = onChain / row.sizeShares;
-        await prisma.riskPosition.update({
-          where: { id: row.id },
-          data: {
-            sizeShares: onChain,
-            costUsd: Math.max(0, row.costUsd * ratio),
-          },
-        });
-        log.info(
-          { id: row.id, tokenId: row.tokenId, dbShares: row.sizeShares, onChain },
-          'risk: position size reconciled to CLOB balance',
-        );
-      }
-    } catch (err) {
-      log.debug({ err, tokenId: row.tokenId }, 'risk: reconcile balance skipped for token');
-    }
-  }
+    }),
+  );
 }
 
 export async function listRiskPositionsEnriched(): Promise<RiskPositionApiRow[]> {
@@ -503,10 +508,15 @@ export async function listRiskPositionsEnriched(): Promise<RiskPositionApiRow[]>
     orderBy: { updatedAt: 'desc' },
   });
 
+  const bidCentsArr = await Promise.all(
+    rows.map((p) => bestBidCentsForRisk(p.tokenId).catch(() => null as number | null)),
+  );
+
   const out: RiskPositionApiRow[] = [];
 
-  for (const p of rows) {
-    const bidCents = await bestBidCentsForRisk(p.tokenId);
+  for (let i = 0; i < rows.length; i++) {
+    const p = rows[i];
+    const bidCents = bidCentsArr[i];
     const { highWater, trailingStopCents, currentCents } = await updateHighWaterAndMaybeQueueStop(
       p,
       bidCents,
@@ -542,6 +552,19 @@ export async function listRiskPositionsEnriched(): Promise<RiskPositionApiRow[]>
 }
 
 async function ensureCloseTask(positionId: string): Promise<void> {
+  const prev = ensureCloseTaskTailByPosition.get(positionId) ?? Promise.resolve();
+  const job = prev.then(() => ensureCloseTaskBody(positionId));
+  ensureCloseTaskTailByPosition.set(positionId, job);
+  try {
+    await job;
+  } finally {
+    if (ensureCloseTaskTailByPosition.get(positionId) === job) {
+      ensureCloseTaskTailByPosition.delete(positionId);
+    }
+  }
+}
+
+async function ensureCloseTaskBody(positionId: string): Promise<void> {
   const active = await prisma.riskTask.findFirst({
     where: {
       positionId,
@@ -559,6 +582,31 @@ async function ensureCloseTask(positionId: string): Promise<void> {
     },
   });
   log.info({ positionId }, 'risk: stop-loss queued close_position task');
+}
+
+export async function patchRiskPositionStop(params: {
+  id: string;
+  stopLossPct?: number;
+  highWaterCents?: number;
+}): Promise<RiskPosition> {
+  const { id, stopLossPct, highWaterCents } = params;
+  const data: { stopLossPct?: number; highWaterCents?: number } = {};
+  if (stopLossPct != null) {
+    if (!Number.isFinite(stopLossPct) || stopLossPct < 1 || stopLossPct > 99) {
+      throw new Error('stopLossPct must be 1–99');
+    }
+    data.stopLossPct = stopLossPct;
+  }
+  if (highWaterCents != null) {
+    if (!Number.isFinite(highWaterCents) || highWaterCents <= 0 || highWaterCents > 100) {
+      throw new Error('highWaterCents must be in (0, 100]');
+    }
+    data.highWaterCents = highWaterCents;
+  }
+  if (Object.keys(data).length === 0) {
+    throw new Error('no updatable fields');
+  }
+  return prisma.riskPosition.update({ where: { id }, data });
 }
 
 export async function enqueueClosePosition(positionId: string): Promise<void> {
@@ -684,7 +732,7 @@ export async function processRiskTasksOnce(): Promise<void> {
       nextRunAt: { lte: new Date() },
     },
     orderBy: { nextRunAt: 'asc' },
-    take: 8,
+    take: 20,
   });
 
   for (const task of tasks) {

@@ -19,6 +19,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   READ_ONLY_MODE: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
   PORT: z.string().default('3001'),
+  /**
+   * HTTP listen address. Default `127.0.0.1` so the API is not reachable from the LAN.
+   * Use `0.0.0.0` in Docker or when remote machines must connect (use firewall accordingly).
+   */
+  HOST: z.preprocess((val) => {
+    if (val === undefined || val === null || String(val).trim() === '') return '127.0.0.1';
+    return String(val).trim();
+  }, z.string().min(1)),
+  /** Comma-separated browser origins allowed by CORS (dashboard dev server, etc.). */
+  CORS_ORIGINS: z.string().optional(),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_AUTHORIZED_CHAT_ID: z.string().optional(),
@@ -73,4 +83,23 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const config = parsed.data;
+const defaultCorsOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+function buildCorsAllowedOrigins(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [...defaultCorsOrigins];
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length > 0 ? list : [...defaultCorsOrigins];
+}
+
+const baseConfig = parsed.data;
+
+export const config = {
+  ...baseConfig,
+  corsAllowedOrigins: buildCorsAllowedOrigins(baseConfig.CORS_ORIGINS),
+};
+
+if (config.HTTP_PLATFORM_PROXY_TLS_INSECURE) {
+  console.warn(
+    '[config] HTTP_PLATFORM_PROXY_TLS_INSECURE=true: TLS certificate verification to platform origins is disabled when using HTTP_PLATFORM_PROXY_URL (MITM risk if the proxy is untrusted).',
+  );
+}

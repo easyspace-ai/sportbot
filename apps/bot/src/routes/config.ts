@@ -14,6 +14,15 @@ import { resetOutboundWsProxyAgent } from '../proxiedWebSocket';
 const log = createLogger('config');
 const router = Router();
 
+/** Keys whose values must not appear in `GET /api/config` JSON (browser / logs). */
+const SENSITIVE_CONFIG_KEYS = new Set([
+  'telegramBotToken',
+  'telegramAuthorizedChatId',
+  'polymarketApiKey',
+  'polymarketSecret',
+  'polymarketPassphrase',
+]);
+
 function applyProxyFromDb(): void {
   resetPlatformProxyAgents();
   resetOutboundWsProxyAgent();
@@ -99,7 +108,11 @@ function validateConfigPut(key: string, value: string): string | null {
 router.get('/api/config', async (_req: Request, res: Response) => {
   try {
     const rows = await prisma.botConfig.findMany({ orderBy: { key: 'asc' } });
-    res.json(rows);
+    res.json(
+      rows.map((r) =>
+        SENSITIVE_CONFIG_KEYS.has(r.key) ? { ...r, value: '***' } : r,
+      ),
+    );
   } catch (err) {
     log.error({ err }, 'failed to fetch config');
     res.status(500).json({ error: 'internal_server_error' });

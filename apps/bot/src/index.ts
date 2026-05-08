@@ -44,13 +44,26 @@ async function main() {
     process.exit(1);
   }
 
+  const staleRunning = await prisma.riskTask.updateMany({
+    where: { status: 'running' },
+    data: {
+      status: 'pending',
+      nextRunAt: new Date(),
+      lastError: 'reset_after_restart',
+    },
+  });
+  if (staleRunning.count > 0) {
+    dbLog.info({ count: staleRunning.count }, 'risk: reset stale running tasks on startup');
+  }
+
   await applyNetworkingFromDb();
 
   const port = Number(config.PORT);
+  const host = config.HOST;
 
   if (config.READ_ONLY_MODE) {
-    const server = publicApp.listen(port, () => {
-      publicApiLog.info({ port, logLevel: config.LOG_LEVEL }, 'Public read-only API listening');
+    const server = publicApp.listen(port, host, () => {
+      publicApiLog.info({ port, host, logLevel: config.LOG_LEVEL }, 'Public read-only API listening');
       startWsRelay(server);
       startFixtureFinalizer();
       startCentrifugoService();
@@ -63,8 +76,8 @@ async function main() {
     return;
   }
 
-  const server = app.listen(port, () => {
-    apiLog.info({ port, logLevel: config.LOG_LEVEL }, 'Sports Prediction Market Router API listening');
+  const server = app.listen(port, host, () => {
+    apiLog.info({ port, host, logLevel: config.LOG_LEVEL }, 'Sports Prediction Market Router API listening');
     startWsRelay(server);
     startFixtureFinalizer();
     startCentrifugoService();
@@ -88,8 +101,8 @@ async function main() {
 
   if (config.PUBLIC_PORT) {
     const publicPort = Number(config.PUBLIC_PORT);
-    const publicServer = publicApp.listen(publicPort, () => {
-      publicApiLog.info({ port: publicPort }, 'Public read-only API listening');
+    const publicServer = publicApp.listen(publicPort, host, () => {
+      publicApiLog.info({ port: publicPort, host }, 'Public read-only API listening');
       startWsRelay(publicServer);
     });
   }

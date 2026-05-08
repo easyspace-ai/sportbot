@@ -1,7 +1,22 @@
 import { ApiError, AssetType, Side, OrderType } from '@polymarket/clob-client-v2';
+import { formatUnits } from 'viem';
 import { getPolymarketFokBuyExtraTicks, getPolymarketFokSellExtraTicks } from '../effectiveBotSettings';
 import { getPolymarketClobClient } from '../services/polymarketTrading';
 import { bestAskPrice, bestBidPrice } from '../services/clobOrderBook';
+
+/** CLOB `balance-allowance` for CONDITIONAL returns base units (6 decimals on Polygon), not human share count. */
+const CONDITIONAL_BALANCE_DECIMALS = 6 as const;
+
+export function conditionalBalanceToShareFloat(balanceStr: string): number {
+  const t = balanceStr.trim();
+  if (!t || t === '0') return 0;
+  try {
+    return Number(formatUnits(BigInt(t), CONDITIONAL_BALANCE_DECIMALS));
+  } catch {
+    const f = parseFloat(t);
+    return Number.isFinite(f) && f >= 0 ? f : 0;
+  }
+}
 
 function tokenShort(id: string): string {
   if (id.length <= 22) return id;
@@ -34,7 +49,11 @@ export async function executePolymarketSell(
   } catch (err) {
     const inner = err instanceof Error ? err.message : String(err);
     const extra = err instanceof ApiError ? ` httpStatus=${err.status}` : '';
-    throw new Error(`getMarketParams_failed token=${tok}${extra}: ${inner}`, { cause: err });
+    const hint =
+      err instanceof ApiError && err.status === 404
+        ? '（市场可能已结算/下线，或 token 无效；CLOB 无订单簿时无法 FOK 卖出）'
+        : '';
+    throw new Error(`getMarketParams_failed token=${tok}${extra}: ${inner}${hint}`, { cause: err });
   }
 
   const tick = parseFloat(String(tickSize));
@@ -58,14 +77,14 @@ export async function executePolymarketSell(
     throw new Error(`getBalanceAllowance_failed token=${tok}${extra}: ${inner}`, { cause: err });
   }
 
-  const onChain = parseFloat(bal.balance);
+  const onChainShares = conditionalBalanceToShareFloat(bal.balance);
   const sellAmount = Math.min(
     sizeShares,
-    Number.isFinite(onChain) && onChain > 0 ? onChain : sizeShares,
+    Number.isFinite(onChainShares) && onChainShares > 0 ? onChainShares : sizeShares,
   );
   if (!Number.isFinite(sellAmount) || sellAmount <= 0) {
     throw new Error(
-      `zero_conditional_balance token=${tok} requestedShares=${sizeShares} clobBalanceRaw=${bal.balance} parsed=${onChain}`,
+      `zero_conditional_balance token=${tok} requestedShares=${sizeShares} clobBalanceRaw=${bal.balance} onChainShares=${onChainShares}`,
     );
   }
 

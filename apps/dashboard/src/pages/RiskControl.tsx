@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   getRiskPositions,
   getRiskTasks,
+  patchRiskPosition,
   postRiskCloseAll,
   postRiskClosePosition,
   type RiskPositionRow,
@@ -51,6 +52,9 @@ export function RiskControl() {
   const [error, setError] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
+  /** Draft inputs keyed by position id — reset when `positions` refresh. */
+  const [drafts, setDrafts] = useState<Record<string, { sl: string; hw: string }>>({});
+  const [patchingKey, setPatchingKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +76,14 @@ export function RiskControl() {
     return () => clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    const next: Record<string, { sl: string; hw: string }> = {};
+    for (const p of positions) {
+      next[p.id] = { sl: String(p.stopLossPct), hw: String(p.highWaterCents) };
+    }
+    setDrafts(next);
+  }, [positions]);
+
   async function onCloseOne(id: string) {
     setClosingId(id);
     try {
@@ -86,6 +98,54 @@ export function RiskControl() {
       });
     } finally {
       setClosingId(null);
+    }
+  }
+
+  async function applyStopLossPct(id: string) {
+    const d = drafts[id];
+    if (!d) return;
+    const n = parseFloat(d.sl);
+    if (!Number.isFinite(n) || n < 1 || n > 99) {
+      toast({ title: '无效', description: '止损% 须在 1–99 之间', variant: 'destructive' });
+      return;
+    }
+    setPatchingKey(`${id}:sl`);
+    try {
+      await patchRiskPosition(id, { stopLossPct: n });
+      toast({ title: '已更新', description: `止损% = ${n}`, variant: 'success' });
+      await load();
+    } catch (e) {
+      toast({
+        title: '失败',
+        description: e instanceof Error ? e.message : '未知错误',
+        variant: 'destructive',
+      });
+    } finally {
+      setPatchingKey(null);
+    }
+  }
+
+  async function applyHighWater(id: string) {
+    const d = drafts[id];
+    if (!d) return;
+    const n = parseFloat(d.hw);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) {
+      toast({ title: '无效', description: '最高水位须在 (0, 100]（¢）', variant: 'destructive' });
+      return;
+    }
+    setPatchingKey(`${id}:hw`);
+    try {
+      await patchRiskPosition(id, { highWaterCents: n });
+      toast({ title: '已更新', description: `最高水位 = ${n}¢`, variant: 'success' });
+      await load();
+    } catch (e) {
+      toast({
+        title: '失败',
+        description: e instanceof Error ? e.message : '未知错误',
+        variant: 'destructive',
+      });
+    } finally {
+      setPatchingKey(null);
     }
   }
 
@@ -139,6 +199,21 @@ export function RiskControl() {
                 <span className="text-tm-neg">未连接</span>
               )}
             </span>
+            <span
+              className={
+                meta.outboundProxyConfigured
+                  ? 'text-tm-tx'
+                  : 'text-amber-500'
+              }
+              title="与 REST 相同：HTTP_PLATFORM_PROXY_URL 或 设置 → 代理"
+            >
+              出站 WSS：
+              {meta.outboundProxyConfigured ? (
+                <span className="text-tm-pos">已配置（CONNECT 隧道）</span>
+              ) : (
+                <span>未配置（直连）</span>
+              )}
+            </span>
             <span title={meta.userWsLastMessageAt ?? ''}>
               最近推送 {relAgeShort(meta.userWsLastMessageAt)}
             </span>
@@ -154,6 +229,22 @@ export function RiskControl() {
                 title={meta.userWsLastIssue}
               >
                 WS 提示：{meta.userWsLastIssue}
+                {/failed to connect|1006/i.test(meta.userWsLastIssue) &&
+                  !meta.outboundProxyConfigured && (
+                    <span className="block mt-0.5 text-tm-tx-dim font-normal">
+                      当前为直连 Polymarket；若网络受限，请在环境变量
+                      <code className="text-tm-tx"> HTTP_PLATFORM_PROXY_URL </code>
+                      或 设置 → 代理 中填写支持 CONNECT 到
+                      <code className="text-tm-tx"> ws-subscriptions-clob.polymarket.com:443 </code>
+                      的 HTTP(S) 代理。
+                    </span>
+                  )}
+                {/failed to connect|1006/i.test(meta.userWsLastIssue) &&
+                  meta.outboundProxyConfigured && (
+                    <span className="block mt-0.5 text-tm-tx-dim font-normal">
+                      已走代理仍连不上：确认代理允许 CONNECT 到上述主机 443、超时足够；REST 仍会定期同步成交。
+                    </span>
+                  )}
               </span>
             )}
             <span className="text-tm-tx-dim max-w-[420px]">
@@ -192,7 +283,7 @@ export function RiskControl() {
 
         {positions.length > 0 && (
           <div className="overflow-x-auto rounded-sm border border-tm-bd">
-            <table className="w-full min-w-[1040px] border-collapse font-mono text-[10px]">
+            <table className="w-full min-w-[1120px] border-collapse font-mono text-[10px]">
               <thead>
                 <tr className="border-b border-tm-bd bg-tm-bg-el text-tm-tx-mut text-left">
                   <th className="px-2 py-2 font-semibold">盘口</th>
@@ -250,8 +341,73 @@ export function RiskControl() {
                           </div>
                         )}
                       </td>
-                      <td className="px-2 py-2 text-tm-poly">{fmtCents(row.highWaterCents)}</td>
-                      <td className="px-2 py-2 text-tm-tx">{row.stopLossPct.toFixed(0)}%</td>
+                      <td className="px-2 py-2 align-top">
+                        <div className="flex flex-col gap-1 max-w-[100px]">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min={0.1}
+                            max={100}
+                            disabled={row.status !== 'open'}
+                            value={drafts[row.id]?.hw ?? ''}
+                            onChange={(e) =>
+                              setDrafts((prev) => {
+                                const cur = prev[row.id] ?? {
+                                  sl: String(row.stopLossPct),
+                                  hw: String(row.highWaterCents),
+                                };
+                                return { ...prev, [row.id]: { ...cur, hw: e.target.value } };
+                              })
+                            }
+                            className="w-full rounded-sm border border-tm-bd bg-tm-bg px-1 py-0.5 text-[10px] text-tm-poly disabled:opacity-40"
+                          />
+                          <button
+                            type="button"
+                            disabled={
+                              row.status !== 'open' || patchingKey === `${row.id}:hw` || patchingKey === `${row.id}:sl`
+                            }
+                            onClick={() => void applyHighWater(row.id)}
+                            className="rounded-sm bg-tm-bg-sunk px-1 py-0.5 text-[9px] font-bold text-tm-tx hover:bg-tm-bd disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {patchingKey === `${row.id}:hw` ? '…' : '应用'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <div className="flex flex-col gap-1 max-w-[88px]">
+                          <div className="flex items-center gap-0.5">
+                            <input
+                              type="number"
+                              step={1}
+                              min={1}
+                              max={99}
+                              disabled={row.status !== 'open'}
+                              value={drafts[row.id]?.sl ?? ''}
+                              onChange={(e) =>
+                                setDrafts((prev) => {
+                                  const cur = prev[row.id] ?? {
+                                    sl: String(row.stopLossPct),
+                                    hw: String(row.highWaterCents),
+                                  };
+                                  return { ...prev, [row.id]: { ...cur, sl: e.target.value } };
+                                })
+                              }
+                              className="min-w-0 flex-1 rounded-sm border border-tm-bd bg-tm-bg px-1 py-0.5 text-[10px] text-tm-tx disabled:opacity-40"
+                            />
+                            <span className="shrink-0 text-[9px] text-tm-tx-mut">%</span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={
+                              row.status !== 'open' || patchingKey === `${row.id}:sl` || patchingKey === `${row.id}:hw`
+                            }
+                            onClick={() => void applyStopLossPct(row.id)}
+                            className="rounded-sm bg-tm-bg-sunk px-1 py-0.5 text-[9px] font-bold text-tm-tx hover:bg-tm-bd disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {patchingKey === `${row.id}:sl` ? '…' : '应用'}
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-2 py-2 text-tm-neg">{fmtCents(row.trailingStopCents)}</td>
                       <td className="px-2 py-2">
                         <button

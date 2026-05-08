@@ -250,6 +250,8 @@ export interface RiskPositionsMeta {
   restTradesSyncLastAt: string | null;
   /** Bot-reported last WS/credentials issue. */
   userWsLastIssue?: string | null;
+  /** Set when env or dashboard proxy URL is configured (Polymarket user WSS tunnels via CONNECT). */
+  outboundProxyConfigured?: boolean;
   minOpenRiskShares?: number;
 }
 
@@ -269,6 +271,19 @@ export const getRiskPositions = () =>
 
 export const getRiskTasks = (limit = 40) =>
   apiFetch<{ tasks: RiskTaskRow[] }>(`/api/risk/tasks?limit=${limit}`);
+
+export const patchRiskPosition = (
+  id: string,
+  body: { stopLossPct?: number; highWaterCents?: number },
+) =>
+  apiFetch<{ ok: boolean; position: RiskPositionRow }>(
+    `/api/risk/positions/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
 
 export const postRiskClosePosition = (id: string) =>
   apiFetch<{ ok: boolean; positionId: string }>(

@@ -5,7 +5,11 @@ import { prisma } from '../db';
 import { emitMarketRemoved } from './marketEvents';
 import { createLogger } from '../logger';
 import { platformFetch } from '../platformFetch';
-import { getOutboundWsProxyAgent, getWebSocketConstructorForProxy } from '../proxiedWebSocket';
+import {
+  getOutboundWsProxyAgent,
+  getWebSocketConstructorForProxy,
+  wsHandshakeTimeoutMs,
+} from '../proxiedWebSocket';
 
 const log = createLogger('polymarketWs');
 
@@ -333,7 +337,11 @@ function openSocket(): void {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
   const Ws = getWebSocketConstructorForProxy();
-  const socket = new Ws(WS_URL);
+  const handshakeTimeout = wsHandshakeTimeoutMs();
+  const socket =
+    Ws === WebSocket
+      ? new WebSocket(WS_URL, { handshakeTimeout })
+      : new Ws(WS_URL, { handshakeTimeout });
   ws = socket;
 
   socket.on('open', () => {
