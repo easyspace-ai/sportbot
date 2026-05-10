@@ -1,6 +1,6 @@
 /**
- * Dev: esbuild main + preload, dashboard Vite, Electron (VITE_DEV_SERVER_URL).
- * Bot is started by Electron main (bun --watch in apps/bot).
+ * Dev: esbuild main + preload, unified Vite (apps/electron → apps/dashboard root),
+ * Electron (VITE_DEV_SERVER_URL). Bot is started by Electron main (bun --watch in apps/bot).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -15,7 +15,7 @@ const DIST_DIR = join(ELECTRON_DIR, 'dist');
 const electronPath = resolveElectronExecutable();
 
 const vitePort = process.env.VITE_PORT || '5173';
-const viteUrl = `http://localhost:${vitePort}`;
+const viteUrl = `http://127.0.0.1:${vitePort}`;
 
 async function run(cmd: string[], cwd: string): Promise<number> {
   const p = spawn({ cmd, cwd, stdout: 'inherit', stderr: 'inherit' });
@@ -56,6 +56,7 @@ runBunBuild(join(ELECTRON_DIR, 'src/preload/preload.ts'), join(DIST_DIR, 'preloa
 
 copyResources();
 
+/** Vite config + root live under `apps/electron` (same pattern as craft-agents-oss/apps/electron). */
 const viteProc = spawn({
   cmd: [
     'bun',
@@ -64,17 +65,44 @@ const viteProc = spawn({
     'dev',
     '--config',
     'vite.config.mjs',
+    '--host',
+    '127.0.0.1',
     '--strict-port',
     '--port',
     vitePort,
   ],
-  cwd: join(ROOT_DIR, 'apps', 'dashboard'),
+  cwd: ELECTRON_DIR,
   stdout: 'inherit',
   stderr: 'inherit',
   stdin: 'inherit',
 });
 
-await new Promise((r) => setTimeout(r, 1500));
+async function waitForViteReady(primaryUrl: string, maxMs: number): Promise<void> {
+  const port = new URL(primaryUrl).port || '5173';
+  const fallbacks = [primaryUrl, `http://localhost:${port}`, `http://[::1]:${port}`];
+  const deadline = Date.now() + maxMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt += 1;
+    for (const url of fallbacks) {
+      try {
+        const res = await fetch(url, { method: 'GET' });
+        if (res.ok || res.status === 404) {
+          console.log(`vite ready (${attempt} attempt(s)) via ${url}`);
+          return;
+        }
+      } catch {
+        /* try next */
+      }
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  console.warn(
+    `[electron-dev] Vite not responding (${fallbacks.join(', ')}) after ${maxMs}ms — Electron may show blank until it loads`,
+  );
+}
+
+await waitForViteReady(viteUrl, 20_000);
 
 const electronProc = spawn({
   cmd: [electronPath, '.'],

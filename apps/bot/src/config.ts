@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import dotenv from 'dotenv';
+import { applyEmbeddedEnvDefaults } from './embeddedEnv';
 
-dotenv.config();
+applyEmbeddedEnvDefaults();
 
 const readOnlyMode = process.env.READ_ONLY_MODE === 'true';
 
@@ -18,7 +18,7 @@ const optStr = z.preprocess((val) => {
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   READ_ONLY_MODE: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
-  PORT: z.string().default('3001'),
+  PORT: z.string().default('7633'),
   /**
    * HTTP listen address. Default `127.0.0.1` so the API is not reachable from the LAN.
    * Use `0.0.0.0` in Docker or when remote machines must connect (use firewall accordingly).
@@ -57,6 +57,19 @@ const envSchema = z.object({
     z.string().url().optional(),
   ),
   /**
+   * Docker containers cannot reach a proxy running on the host via 127.0.0.1.
+   * Loopback proxy URLs are rewritten to this host unless container loopback is explicitly allowed.
+   */
+  HTTP_PLATFORM_PROXY_DOCKER_HOST: z.preprocess((val) => {
+    if (val === undefined || val === null || String(val).trim() === '') return 'host.docker.internal';
+    return String(val).trim();
+  }, z.string().min(1)),
+  HTTP_PLATFORM_PROXY_ALLOW_CONTAINER_LOOPBACK: z.preprocess((val) => {
+    if (val === undefined || val === null || String(val).trim() === '') return false;
+    const s = String(val).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === 'yes';
+  }, z.boolean()),
+  /**
    * When true, TLS to the **origin** (e.g. clob.polymarket.com) after CONNECT uses `rejectUnauthorized: false`.
    * Only for broken / MITM proxies — weakens security.
    */
@@ -80,6 +93,7 @@ if (!parsed.success) {
     .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
     .join('\n');
   console.error(`[config] Missing or invalid environment variables:\n${missing}`);
+  console.error('[config] Edit defaults in apps/bot/src/embeddedEnv.ts (or set process.env for tests/CI).');
   process.exit(1);
 }
 

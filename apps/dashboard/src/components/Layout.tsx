@@ -1,9 +1,16 @@
+import type { CSSProperties } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { LineChart, History as HistoryIcon, Settings as SettingsIcon, Shield, Wallet } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GITHUB_REPO_URL, X_PROFILE_URL } from '../lib/constants';
 
 const isPublic = import.meta.env.VITE_PUBLIC_MODE === 'true';
+
+const isElectron =
+  typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+const isMacElectron =
+  isElectron &&
+  (navigator.platform.startsWith('Mac') || navigator.userAgent.includes('Mac OS'));
 
 function XIcon({ size = 16 }: { size?: number }) {
   return (
@@ -46,39 +53,117 @@ const navItems = [
 
 export function Layout() {
   return (
-    <div className="h-screen flex flex-col md:flex-row bg-tm-bg text-tm-tx overflow-hidden">
-      {/* Mobile top header (≤md). Hidden on desktop. */}
-      <header className="md:hidden h-11 shrink-0 flex items-center justify-between px-3 bg-tm-bg-sunk border-b border-tm-bd">
-        <span className="font-mono text-[11px] font-bold tracking-[0.18em] text-tm-sx">SPMA</span>
-        <div className="flex items-center gap-3">
+    <div className="h-screen flex flex-col bg-tm-bg text-tm-tx overflow-hidden">
+      {isMacElectron ? (
+        <div
+          className="shrink-0 flex h-8 w-full border-b border-tm-bd bg-tm-bg-sunk z-40"
+          aria-hidden
+        >
+          <div className="w-[76px] shrink-0" />
+          <div
+            className="min-w-0 flex-1"
+            style={{ WebkitAppRegion: 'drag' } as CSSProperties}
+          />
+        </div>
+      ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+        {/* Mobile top header (≤md). Hidden on desktop. */}
+        <header className="md:hidden h-11 shrink-0 flex items-center justify-between px-3 bg-tm-bg-sunk border-b border-tm-bd">
+          <span className="font-mono text-[11px] font-bold tracking-[0.18em] text-tm-sx">SPMA</span>
+          <div className="flex items-center gap-3">
+            {isPublic && (
+              <a
+                href={GITHUB_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="在 GitHub 查看源码"
+                className="flex items-center justify-center w-11 h-11 rounded-sm text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
+              >
+                <GithubIcon size={18} />
+              </a>
+            )}
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inset-0 rounded-full bg-tm-pos animate-tm-pulse" />
+                <span className="relative rounded-full h-1.5 w-1.5 bg-tm-pos" />
+              </span>
+              <span className="font-mono text-[9px] tracking-[0.1em] text-tm-tx-mut">在线</span>
+            </span>
+          </div>
+        </header>
+
+        {/* Desktop left rail (≥md). Hidden on mobile. */}
+        <aside className="hidden md:flex w-14 shrink-0 flex-col items-stretch bg-tm-bg-sunk border-r border-tm-bd">
+          <div className="h-10 flex items-center justify-center border-b border-tm-bd">
+            <span className="font-mono text-[10px] font-bold tracking-[0.15em] text-tm-sx">SPMA</span>
+          </div>
+
+          <nav className="flex-1 flex flex-col py-2">
+            {navItems.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  cn(
+                    'relative flex flex-col items-center justify-center gap-1 py-3 transition-colors',
+                    'text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60',
+                    isActive && 'text-tm-tx bg-tm-bg-el border-l-2 border-tm-sx',
+                  )
+                }
+              >
+                <Icon size={16} strokeWidth={1.75} />
+                <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+
           {isPublic && (
             <a
               href={GITHUB_REPO_URL}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="在 GitHub 查看源码"
-              className="flex items-center justify-center w-11 h-11 rounded-sm text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
+              title="在 GitHub 查看源码"
+              className="flex flex-col items-center justify-center gap-1 py-3 border-t border-tm-bd text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
             >
-              <GithubIcon size={18} />
+              <GithubIcon size={16} />
+              <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">源码</span>
             </a>
           )}
-          <span className="flex items-center gap-1.5">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inset-0 rounded-full bg-tm-pos animate-tm-pulse" />
-              <span className="relative rounded-full h-1.5 w-1.5 bg-tm-pos" />
-            </span>
-            <span className="font-mono text-[9px] tracking-[0.1em] text-tm-tx-mut">在线</span>
-          </span>
-        </div>
-      </header>
 
-      {/* Desktop left rail (≥md). Hidden on mobile. */}
-      <aside className="hidden md:flex w-14 shrink-0 flex-col items-stretch bg-tm-bg-sunk border-r border-tm-bd">
-        <div className="h-10 flex items-center justify-center border-b border-tm-bd">
-          <span className="font-mono text-[10px] font-bold tracking-[0.15em] text-tm-sx">SPMA</span>
-        </div>
+          {isPublic ? (
+            <a
+              href={X_PROFILE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="在 X 关注 @Declan_SX"
+              title="在 X 关注 @Declan_SX"
+              className="flex flex-col items-center justify-center gap-1 py-3 border-t border-tm-bd text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
+            >
+              <XIcon size={16} />
+              <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">私信</span>
+            </a>
+          ) : (
+            <div className="h-12 border-t border-tm-bd flex flex-col items-center justify-center gap-1">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inset-0 rounded-full bg-tm-pos animate-tm-pulse" />
+                <span className="relative rounded-full h-1.5 w-1.5 bg-tm-pos" />
+              </span>
+              <span className="font-mono text-[8px] tracking-[0.1em] text-tm-tx-mut">在线</span>
+            </div>
+          )}
+        </aside>
 
-        <nav className="flex-1 flex flex-col py-2">
+        <main className="flex-1 min-w-0 overflow-y-auto pb-14 md:pb-0">
+          <Outlet />
+        </main>
+
+        {/* Mobile bottom tab bar (≤md). Hidden on desktop. Respects iOS safe area. */}
+        <nav
+          className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-tm-bg-sunk border-t border-tm-bd flex items-stretch"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           {navItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -86,89 +171,25 @@ export function Layout() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'relative flex flex-col items-center justify-center gap-1 py-3 transition-colors',
-                  'text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60',
-                  isActive && 'text-tm-tx bg-tm-bg-el border-l-2 border-tm-sx',
+                  'relative flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors',
+                  'text-tm-tx-mut hover:text-tm-tx',
+                  isActive && 'text-tm-tx',
                 )
               }
             >
-              <Icon size={16} strokeWidth={1.75} />
-              <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">{label}</span>
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute top-0 left-4 right-4 h-0.5 bg-tm-sx" />
+                  )}
+                  <Icon size={20} strokeWidth={1.75} />
+                  <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
-
-        {isPublic && (
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="在 GitHub 查看源码"
-            title="在 GitHub 查看源码"
-            className="flex flex-col items-center justify-center gap-1 py-3 border-t border-tm-bd text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
-          >
-            <GithubIcon size={16} />
-            <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">源码</span>
-          </a>
-        )}
-
-        {isPublic ? (
-          <a
-            href={X_PROFILE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="在 X 关注 @Declan_SX"
-            title="在 X 关注 @Declan_SX"
-            className="flex flex-col items-center justify-center gap-1 py-3 border-t border-tm-bd text-tm-tx-mut hover:text-tm-tx hover:bg-tm-bg-el/60 transition-colors"
-          >
-            <XIcon size={16} />
-            <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">私信</span>
-          </a>
-        ) : (
-          <div className="h-12 border-t border-tm-bd flex flex-col items-center justify-center gap-1">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inset-0 rounded-full bg-tm-pos animate-tm-pulse" />
-              <span className="relative rounded-full h-1.5 w-1.5 bg-tm-pos" />
-            </span>
-            <span className="font-mono text-[8px] tracking-[0.1em] text-tm-tx-mut">在线</span>
-          </div>
-        )}
-      </aside>
-
-      <main className="flex-1 min-w-0 overflow-y-auto pb-14 md:pb-0">
-        <Outlet />
-      </main>
-
-      {/* Mobile bottom tab bar (≤md). Hidden on desktop. Respects iOS safe area. */}
-      <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-tm-bg-sunk border-t border-tm-bd flex items-stretch"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              cn(
-                'relative flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors',
-                'text-tm-tx-mut hover:text-tm-tx',
-                isActive && 'text-tm-tx',
-              )
-            }
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <span className="absolute top-0 left-4 right-4 h-0.5 bg-tm-sx" />
-                )}
-                <Icon size={20} strokeWidth={1.75} />
-                <span className="font-mono text-[9px] font-semibold tracking-[0.1em]">{label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import balancesRouter from './routes/balances';
 import statsRouter from './routes/stats';
 import polymarketAccountsRouter from './routes/polymarketAccounts';
 import riskRouter from './routes/risk';
+import setupRouter from './routes/setup';
 import { createLogger } from './logger';
 
 const log = createLogger('http');
@@ -18,6 +19,7 @@ const app = express();
 app.use(corsMiddleware);
 app.use(express.json());
 app.use(healthRouter);
+app.use(setupRouter);
 app.use(marketsRouter);
 app.use(tradeRouter);
 app.use(orderbookRouter);

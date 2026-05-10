@@ -8,6 +8,7 @@ import { emitMarketRemoved } from '../services/marketEvents';
 import { EPL, UCL, UEL, COPA_LIBERTADORES, LA_LIGA, SERIE_A, BUNDESLIGA, EREDIVISIE, LIGUE_1, NBA, MLB, NHL, type LeagueConfig } from '../leagues';
 import type { MarketQuote } from '../types';
 import { createLogger } from '../logger';
+import { httpPlatformProxyLogFields } from '../effectiveBotSettings';
 
 const log = createLogger('sync');
 
@@ -42,6 +43,7 @@ function logAggregatedFetchFailures(
     log.error(
       {
         platform,
+        ...httpPlatformProxyLogFields(),
         err: { code, message },
         failedLeagueCount: leagues.length,
         leagues: leagues.slice(0, 12),

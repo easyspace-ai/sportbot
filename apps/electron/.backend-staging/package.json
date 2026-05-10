@@ -1,0 +1,28 @@
+{
+  "name": "polybot-backend-bundle",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@polymarket/clob-client-v2": "file:./vendor/clob-client-v2",
+    "polymarket-websocket-client": "file:../../packages/polymarket-websocket-client",
+    "axios": "^1.7.9",
+    "@prisma/adapter-libsql": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@types/cors": "^2.8.19",
+    "centrifuge": "^5.2.1",
+    "cors": "^2.8.6",
+    "ethers": "^6.13.5",
+    "express": "^4.21.2",
+    "grammy": "^1.34.0",
+    "https-proxy-agent": "^7.0.6",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "undici": "^6.25.0",
+    "viem": "^2.48.4",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2",
+    "prisma": "^7.8.0"
+  }
+}

@@ -300,3 +300,14 @@ export const putConfig = (key: string, value: string) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value }),
   });
+
+export interface SetupStatus {
+  needsOnboarding: boolean;
+  proxyConfigured: boolean;
+  polymarketConfigured: boolean;
+}
+
+export const getSetupStatus = () => apiFetch<SetupStatus>('/api/setup/status');
+
+export const postSetupComplete = () =>
+  apiFetch<{ ok: boolean }>('/api/setup/complete', { method: 'POST' });

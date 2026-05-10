@@ -10,6 +10,7 @@ import {
   resetPlatformProxyAgents,
 } from '../proxySupport';
 import { resetOutboundWsProxyAgent } from '../proxiedWebSocket';
+import { areHeavyServicesStarted } from '../heavyServices';
 
 const log = createLogger('config');
 const router = Router();
@@ -71,6 +72,13 @@ function validateConfigPut(key: string, value: string): string | null {
     const parsed = parseFloat(value);
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1_000_000) {
       return 'minOpenRiskShares must be a number > 0 and ≤ 1000000';
+    }
+  }
+
+  if (key === 'onboardingComplete') {
+    const t = value.trim();
+    if (t !== 'true' && t !== 'false') {
+      return 'onboardingComplete must be true or false';
     }
   }
 
@@ -146,7 +154,9 @@ router.put('/api/config/:key', async (req: Request, res: Response) => {
     }
     if (key === 'httpPlatformProxyUrl') {
       applyProxyFromDb();
-      void import('../services/polymarketUserWs').then((m) => m.hardResetPolymarketUserWs());
+      if (areHeavyServicesStarted()) {
+        void import('../services/polymarketUserWs').then((m) => m.hardResetPolymarketUserWs());
+      }
     }
     res.json(row);
   } catch (err) {

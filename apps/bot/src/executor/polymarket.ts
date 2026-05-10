@@ -130,7 +130,7 @@ export async function executePolymarketSell(
       throw new Error(
         'Polymarket 订单被拒：maker 地址不被允许。' +
           '本 bot 固定 POLY_1271：funder 须为 CREATE2 推导的 deposit 钱包（与私钥对应 EOA 唯一确定）。' +
-          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 .env 四项是否与该 EOA 匹配。',
+          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 embeddedEnv / 账号配置是否与该 EOA 匹配。',
         { cause: err instanceof Error ? err : undefined },
       );
     }
@@ -205,7 +205,7 @@ export async function executePolymarketOrder(
       throw new Error(
         'Polymarket 订单被拒：maker 地址不被允许。' +
           '本 bot 固定 POLY_1271：funder 须为 CREATE2 推导的 deposit 钱包（与私钥对应 EOA 唯一确定）。' +
-          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 .env 四项是否与该 EOA 匹配。',
+          '若曾手动改过 funder，请删除账号后仅用私钥重新添加，或检查 embeddedEnv / 账号配置是否与该 EOA 匹配。',
       );
     }
     throw err;

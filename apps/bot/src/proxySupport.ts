@@ -3,7 +3,10 @@ import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { ProxyAgent } from 'undici';
 import { config } from './config';
-import { getEffectiveHttpPlatformProxyUrl } from './effectiveBotSettings';
+import {
+  getEffectiveHttpPlatformProxyUrl,
+  httpPlatformProxyLogFields,
+} from './effectiveBotSettings';
 import { createLogger } from './logger';
 
 const log = createLogger('proxy');
@@ -78,6 +81,7 @@ export function installAxiosProxyForPolymarket(): void {
   axiosProxyInstalled = true;
   log.info(
     {
+        ...httpPlatformProxyLogFields(),
       timeoutMs: proxyAgentTimeoutMs(),
       tlsInsecure: config.HTTP_PLATFORM_PROXY_TLS_INSECURE,
       keepAlive: false,

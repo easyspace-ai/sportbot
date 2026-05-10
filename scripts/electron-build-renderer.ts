@@ -14,7 +14,7 @@ if (existsSync(outDir)) {
   rmSync(outDir, { recursive: true, force: true });
 }
 
-const apiBase = process.env.ELECTRON_VITE_API_BASE_URL ?? 'http://127.0.0.1:3001';
+const apiBase = process.env.ELECTRON_VITE_API_BASE_URL ?? 'http://127.0.0.1:7633';
 const wsUrl =
   process.env.ELECTRON_VITE_WS_URL ?? apiBase.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws';
 

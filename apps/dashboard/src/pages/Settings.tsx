@@ -353,13 +353,13 @@ export function Settings() {
                 <div className="font-mono text-[11px] font-semibold text-tm-tx">HTTP(S) 代理地址</div>
                 <p className="mt-1 font-mono text-[10px] leading-[1.55] text-tm-tx-mut">
                   与 <span className="text-tm-tx-dim">HTTP_PLATFORM_PROXY_URL</span>{' '}
-                  相同语义：非空时覆盖 .env，经 CONNECT 转发 SX / Polymarket 等出站请求。保存后立即生效。
+                  相同语义：非空时覆盖 embeddedEnv 中的代理设置，经 CONNECT 转发 SX / Polymarket 等出站请求。保存后立即生效。
                 </p>
               </div>
               <input
                 value={proxyDraft}
                 onChange={(e) => setProxyDraft(e.target.value)}
-                placeholder="https://user:pass@host:port 或留空使用 .env"
+                placeholder="https://user:pass@host:port 或留空使用 embeddedEnv 默认值"
                 className="w-full rounded-[var(--tm-rad)] border border-tm-bd bg-tm-bg-sunk px-2.5 py-2 font-mono text-[12px] text-tm-tx outline-none focus:border-tm-sx"
               />
               <button
@@ -384,7 +384,7 @@ export function Settings() {
                 <p className="font-mono text-[10px] leading-[1.55] text-tm-tx-mut">
                   对应 <span className="text-tm-tx-dim">TELEGRAM_BOT_TOKEN</span> 与{' '}
                   <span className="text-tm-tx-dim">TELEGRAM_AUTHORIZED_CHAT_ID</span>。
-                  此处非空时优先于 .env。修改 Token 后需重启进程才能重连 Bot。
+                  此处非空时优先于 embeddedEnv。修改 Token 后需重启进程才能重连 Bot。
                 </p>
                 <div>
                   <label className="block font-mono text-[10px] font-semibold text-tm-tx-dim mb-1">

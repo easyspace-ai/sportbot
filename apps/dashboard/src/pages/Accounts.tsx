@@ -122,7 +122,7 @@ export function Accounts() {
           {loading ? (
             <p className="font-mono text-[11px] text-tm-tx-dim">加载中…</p>
           ) : accounts.length === 0 ? (
-            <p className="font-mono text-[11px] text-tm-tx-dim">暂无账号。请添加首个账号，或继续在 .env 中配置 POLYMARKET_* 作为后备。</p>
+            <p className="font-mono text-[11px] text-tm-tx-dim">暂无账号。请添加首个账号，或在 apps/bot/src/embeddedEnv.ts 中配置 POLYMARKET_* 作为后备。</p>
           ) : (
             <ul className="space-y-2">
               {accounts.map((a) => {

@@ -1,11 +1,17 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Config } from 'tailwindcss';
+
+/** Config file lives in `apps/dashboard` — anchor `content` here so Vite cwd can be `apps/electron`. */
+const dashboardDir = path.dirname(fileURLToPath(import.meta.url));
+const dashboardPosix = dashboardDir.replace(/\\/g, '/');
 
 export default {
   darkMode: ['class'],
   content: [
-    './index.html',
-    './src/**/*.{ts,tsx}',
-    './src/components/ui/**/*.{ts,tsx}',
+    `${dashboardPosix}/index.html`,
+    `${dashboardPosix}/src/**/*.ts`,
+    `${dashboardPosix}/src/**/*.tsx`,
   ],
   theme: {
     extend: {

@@ -21,7 +21,7 @@ test:  bun run test             # vitest (bot)
 build: bun run build            # clob-client-v2 + bot + dashboard
 lint:  bun run lint              # eslint (bot + dashboard)
 check: bun run typecheck        # tsc --noEmit (bot + dashboard + electron)
-electron:dev: bun run electron:dev   # dashboard Vite + Electron; bot started by main
+electron:dev: bun run electron:dev   # Vite from apps/electron (dashboard root) + Electron; bot started by main
 ```
 
 ## Conventions
@@ -30,7 +30,7 @@ electron:dev: bun run electron:dev   # dashboard Vite + Electron; bot started by
 - Routing logic lives in `src/router/` — adapters return a normalized `MarketQuote` type, router handles allocation.
 - All Prisma access goes through `src/db/` — never import `PrismaClient` directly in feature code.
 - Telegram commands live in `src/telegram/commands/` — one file per command.
-- Config loaded once at startup via `src/config.ts` — never read `process.env` outside that file.
+- Bot defaults live in `apps/bot/src/embeddedEnv.ts` (applied in `config.ts`); `process.env` still overrides for tests/CI — do not read `process.env` in feature code.
 
 ---
 

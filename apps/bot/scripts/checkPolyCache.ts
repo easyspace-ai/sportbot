@@ -11,7 +11,7 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-const port = process.env.PORT || '3001';
+const port = process.env.PORT || '7633';
 const ws = new WebSocket(`ws://localhost:${port}/ws`);
 ws.on('open', () => {
   ws.send(JSON.stringify({ type: 'subscribePolyOdds', tokenIds: [TOKEN] }));

@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Sports prediction router — bot + dashboard + Electron shell (Bun workspaces)",
+  "description": "Sports prediction router — bot + dashboard; Electron dev hosts Vite from apps/electron (craft-style)",
   "workspaces": ["apps/*", "packages/*"],
   "trustedDependencies": ["electron"],
   "scripts": {
-    "postinstall": "node node_modules/electron/install.js",
+    "postinstall": "node scripts/electron-postinstall.mjs",
+    "db:generate": "cd apps/bot && bunx prisma generate",
+    "db:migrate": "cd apps/bot && bunx prisma migrate deploy",
+    "db:studio": "cd apps/bot && bunx prisma studio",
     "dev": "concurrently -n bot,dashboard -c blue,green --handle-input \"bun run --filter bot dev\" \"bun run --filter dashboard dev\"",
     "build": "bun run --filter @polymarket/clob-client-v2 build && bun run --filter bot build && bun run --filter dashboard build",
     "test": "bun run --filter bot test",
@@ -25,7 +28,11 @@
     "electron:dist": "bun run electron:build && cd apps/electron && electron-builder --config electron-builder.yml",
     "electron:dist:mac": "bun run electron:build && cd apps/electron && electron-builder --config electron-builder.mac.yml --mac",
     "electron:dist:win": "bun run electron:build && cd apps/electron && electron-builder --config electron-builder.yml --win",
-    "electron:dist:linux": "bun run electron:build && cd apps/electron && electron-builder --config electron-builder.yml --linux"
+    "electron:dist:linux": "bun run electron:build && cd apps/electron && electron-builder --config electron-builder.yml --linux",
+    "electron:copy-assets": "bun apps/electron/scripts/copy-assets.ts",
+    "electron:pack:mac": "bash apps/electron/scripts/build-dmg.sh",
+    "electron:pack:linux": "bash apps/electron/scripts/build-linux.sh",
+    "electron:pack:win": "powershell -ExecutionPolicy Bypass -File apps/electron/scripts/build-win.ps1"
   },
   "devDependencies": {
     "@types/bun": "latest",

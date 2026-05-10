@@ -17,6 +17,15 @@ export function wsHandshakeTimeoutMs(): number {
   return platformProxyTimeoutMs();
 }
 
+/**
+ * Some HTTP CONNECT proxies mishandle `Sec-WebSocket-Extensions` (permessage-deflate),
+ * which can surface as failed handshake or abnormal close (1006). Disable for all
+ * outbound WSS that share `HttpsProxyAgent` (Polymarket, Centrifugo, …).
+ */
+const proxyWebSocketClientDefaults: ClientOptions = {
+  perMessageDeflate: false,
+};
+
 export function resetOutboundWsProxyAgent(): void {
   agentInited = false;
   proxyAgent = undefined;
@@ -47,7 +56,8 @@ export function getOutboundWsProxyAgent(): Agent | undefined {
 
 /**
  * `ws` constructor compatible with Centrifuge (`new ws(url)` / `new ws(url, subProtocol)`)
- * and direct use. When `HTTP_PLATFORM_PROXY_URL` is set, connections use that HTTP CONNECT proxy.
+ * and direct use. When a platform proxy is set, connections use that HTTP CONNECT proxy.
+ * In Docker, loopback proxy URLs are resolved to the configured host gateway.
  */
 export function getWebSocketConstructorForProxy(): typeof WebSocket {
   const agent = getOutboundWsProxyAgent();
@@ -58,9 +68,19 @@ export function getWebSocketConstructorForProxy(): typeof WebSocket {
   class WebSocketThroughProxy extends WebSocket {
     constructor(address: string | URL, protocols?: string | string[] | ClientOptions, options?: ClientOptions) {
       if (typeof protocols === 'string' || Array.isArray(protocols)) {
-        super(address, protocols, { handshakeTimeout, ...(options ?? {}), agent });
+        super(address, protocols, {
+          ...proxyWebSocketClientDefaults,
+          handshakeTimeout,
+          ...(options ?? {}),
+          agent,
+        });
       } else {
-        super(address, { handshakeTimeout, ...((protocols as ClientOptions) ?? {}), agent });
+        super(address, {
+          ...proxyWebSocketClientDefaults,
+          handshakeTimeout,
+          ...((protocols as ClientOptions) ?? {}),
+          agent,
+        });
       }
     }
   }

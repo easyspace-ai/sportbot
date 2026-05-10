@@ -2,9 +2,20 @@ import path from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
-// This file lives at apps/bot/src/db — DB file is at apps/bot/prisma/dev.db (not under src/).
-const dbPath = path.resolve(__dirname, "..", "..", "prisma", "dev.db");
-const adapter = new PrismaLibSql({ url: `file:${dbPath}` });
+/**
+ * LibSQL URL for the adapter. Must follow `DATABASE_URL` when set (Electron passes
+ * `file:…/userData/.../app.db`); otherwise resolve dev DB next to `apps/bot/prisma/`.
+ */
+function libsqlDatabaseUrl(): string {
+  const fromEnv = process.env.DATABASE_URL?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const dbPath = path.resolve(__dirname, "..", "..", "prisma", "dev.db");
+  return `file:${dbPath}`;
+}
+
+const adapter = new PrismaLibSql({ url: libsqlDatabaseUrl() });
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
